@@ -83,7 +83,7 @@ function bindGlobalButtons(){
   qs("#modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
   qs("#addRouteButton").addEventListener("click",openRoutePicker);
   qs("#planDate").addEventListener("change",loadPlanForDate);
-  qs("#optimizeButton").addEventListener("click",optimizeDistribution);
+  qs("#optimizeButton").addEventListener("click",event=>{event.preventDefault();optimizeDistribution()});
   qs("#shareTodayButton").addEventListener("click",()=>openShareDialog(getPlan(todayISO())));
   qs("#sharePlanButton").addEventListener("click",()=>openShareDialog(currentPlan));
   qs("#saveDraftButton").addEventListener("click",()=>savePlan("Borrador"));
@@ -251,14 +251,17 @@ function optimizeDistribution(){
   try{
     if(!currentPlan?.routes?.length){toast("Agrega al menos una ruta");return false}
 
-    const drivers=(state.drivers||[]).filter(x=>x&&x.active!==false);
-    const assistants=(state.assistants||[]).filter(x=>x&&x.active!==false);
-    const vehicles=(state.vehicles||[]).filter(x=>x&&x.active!==false);
+    // Acepta datos antiguos, datos locales y datos recibidos desde Firebase.
+    const isAvailable=item=>item && item.active!==false && String(item.active).toLowerCase()!=="false";
+    const drivers=(state.drivers||[]).filter(isAvailable);
+    const assistants=(state.assistants||[]).filter(isAvailable);
+    const vehicles=(state.vehicles||[]).filter(isAvailable);
     const routeCount=currentPlan.routes.length;
 
-    if(drivers.length<routeCount){toast(`Faltan conductores disponibles: necesitas ${routeCount} y hay ${drivers.length}`);return false}
-    if(assistants.length<routeCount){toast(`Faltan ayudantes disponibles: necesitas ${routeCount} y hay ${assistants.length}`);return false}
-    if(vehicles.length<routeCount){toast(`Faltan vehículos disponibles: necesitas ${routeCount} y hay ${vehicles.length}`);return false}
+    if(drivers.length<routeCount || assistants.length<routeCount || vehicles.length<routeCount){
+      const message=`No hay recursos suficientes. Rutas: ${routeCount}; conductores: ${drivers.length}; ayudantes: ${assistants.length}; vehículos: ${vehicles.length}.`;
+      showPlannerDiagnostic(message,"error");toast(message);return false;
+    }
 
     const history=(state.plans||[])
       .filter(p=>p&&p.date&&p.date<currentPlan.date&&p.status!=="Cancelada")
@@ -272,86 +275,80 @@ function optimizeDistribution(){
     const ordered=[...currentPlan.routes].sort((a,b)=>routeWeight(b)-routeWeight(a));
     const usedDrivers=new Set(),usedAssistants=new Set(),usedVehicles=new Set();
 
-    for(const r of ordered){
-      r.difficulty=difficulty(r.amount);
+    ordered.forEach((route,index)=>{
+      route.difficulty=difficulty(route.amount);
 
-      const availableDrivers=drivers.filter(d=>!usedDrivers.has(String(d.id)));
-      const allowedDrivers=availableDrivers.filter(d=>driverAllowed(d,r,false));
-      const pool=allowedDrivers.length?allowedDrivers:availableDrivers;
-      const d=[...pool].sort((a,b)=>driverScore(a,r)-driverScore(b,r))[0]||availableDrivers[0];
-      if(!d)throw new Error("No fue posible asignar un conductor");
+      let availableDrivers=drivers.filter(d=>!usedDrivers.has(String(d.id)));
+      let candidates=availableDrivers.filter(d=>driverAllowed(d,route,false));
+      if(!candidates.length)candidates=availableDrivers;
+      candidates.sort((a,b)=>{
+        const score=d=>{
+          let value=driverLoad[String(d.id)]||0;
+          const last=lastDriverRoute[String(d.id)];
+          if(last&&route.routeType==="Larga"&&last.routeType==="Larga")value+=10000;
+          if(last&&difficulty(route.amount)==="Difícil"&&last.difficulty==="Difícil")value+=2000;
+          if(!driverAllowed(d,route,false))value+=50000;
+          return value;
+        };
+        return score(a)-score(b);
+      });
+      const driver=candidates[0]||availableDrivers[0]||drivers[index];
 
-      usedDrivers.add(String(d.id));
-      r.driverId=String(d.id);
-      r.driverName=d.name||"";
+      let availableAssistants=assistants.filter(a=>!usedAssistants.has(String(a.id)));
+      const priorPartners=recentPartners(driver.id,history);
+      availableAssistants.sort((a,b)=>{
+        const score=x=>(assistantLoad[String(x.id)]||0)+(priorPartners.has(String(x.id))?10000:0)+((lastAssistantRoute[String(x.id)]?.routeType==="Larga"&&route.routeType==="Larga")?2000:0);
+        return score(a)-score(b);
+      });
+      const assistant=availableAssistants[0]||assistants[index];
 
-      const recent=recentPartners(d.id,history);
-      const availableAssistants=assistants.filter(x=>!usedAssistants.has(String(x.id)));
-      const a=[...availableAssistants]
-        .sort((x,y)=>assistantScore(x,d,r,recent)-assistantScore(y,d,r,recent))[0]||availableAssistants[0];
-      if(!a)throw new Error("No fue posible asignar un ayudante");
+      const preferred=vehicles.find(v=>String(v.id)===String(driver.preferredVehicleId)&&!usedVehicles.has(String(v.id)));
+      const vehicle=preferred||vehicles.find(v=>!usedVehicles.has(String(v.id)))||vehicles[index];
 
-      usedAssistants.add(String(a.id));
-      r.assistantId=String(a.id);
-      r.assistantName=a.name||"";
+      if(!driver||!assistant||!vehicle)throw new Error(`No se pudo completar la ruta ${route.routeName||index+1}`);
 
-      const preferred=vehicles.find(v=>String(v.id)===String(d.preferredVehicleId)&&!usedVehicles.has(String(v.id)));
-      const v=preferred||vehicles.find(v=>!usedVehicles.has(String(v.id)));
-      if(!v)throw new Error("No fue posible asignar un vehículo");
-
-      usedVehicles.add(String(v.id));
-      r.vehicleId=String(v.id);
-      r.unit=v.unit||"";
-      r.plate=v.plate||"";
-    }
-
-    function driverScore(driver,route){
-      let score=driverLoad[String(driver.id)]||0;
-      const last=lastDriverRoute[String(driver.id)];
-      if(last){
-        if(route.routeType==="Larga"&&last.routeType==="Larga")score+=1000;
-        if(difficulty(route.amount)==="Difícil"&&last.difficulty==="Difícil")score+=300;
-        if(last.date===addDaysISO(currentPlan.date,-1))score+=25;
-      }
-      if(!driverAllowed(driver,route,false))score+=5000;
-      return score;
-    }
-
-    function assistantScore(assistant,driver,route,recentPartnersSet){
-      let score=assistantLoad[String(assistant.id)]||0;
-      if(recentPartnersSet.has(String(assistant.id)))score+=1000;
-      const last=lastAssistantRoute[String(assistant.id)];
-      if(last&&route.routeType==="Larga"&&last.routeType==="Larga")score+=300;
-      return score;
-    }
-
-    // Validación final y respaldo secuencial: nunca deja un selector vacío si hay recursos suficientes.
-    ordered.forEach((r,index)=>{
-      const d=drivers.find(x=>String(x.id)===String(r.driverId))||drivers[index];
-      const a=assistants.find(x=>String(x.id)===String(r.assistantId))||assistants[index];
-      const v=vehicles.find(x=>String(x.id)===String(r.vehicleId))||vehicles[index];
-      r.driverId=String(d.id);r.driverName=d.name||"";
-      r.assistantId=String(a.id);r.assistantName=a.name||"";
-      r.vehicleId=String(v.id);r.unit=v.unit||"";r.plate=v.plate||"";
+      usedDrivers.add(String(driver.id));usedAssistants.add(String(assistant.id));usedVehicles.add(String(vehicle.id));
+      route.driverId=String(driver.id);route.driverName=driver.name||"";
+      route.assistantId=String(assistant.id);route.assistantName=assistant.name||"";
+      route.vehicleId=String(vehicle.id);route.unit=vehicle.unit||"";route.plate=vehicle.plate||"";
     });
 
     currentPlan.routes=ordered;
     plannerDirty=true;
-    persistCurrentPlan("Borrador",true);
-    qs("#plannerNotice").textContent="Distribución generada automáticamente respetando restricciones, evitando rutas largas consecutivas y rotando ayudantes.";
-    qs("#plannerNotice").classList.remove("hidden");
-    renderPlanner();
 
-    const incomplete=currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId);
-    if(incomplete)throw new Error("La distribución quedó incompleta");
-    toast("Distribución generada y guardada");
+    // Primero pinta los resultados; luego guarda. Así nada puede devolver visualmente
+    // los selectores a “Sin asignar” durante esta misma acción.
+    renderPlanner();
+    currentPlan.routes.forEach(route=>{
+      const d=document.querySelector(`[data-driver="${CSS.escape(String(route.id))}"]`);
+      const a=document.querySelector(`[data-assistant="${CSS.escape(String(route.id))}"]`);
+      const v=document.querySelector(`[data-vehicle="${CSS.escape(String(route.id))}"]`);
+      if(d)d.value=String(route.driverId);if(a)a.value=String(route.assistantId);if(v)v.value=String(route.vehicleId);
+    });
+
+    const incomplete=currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId||!r.driverName||!r.assistantName);
+    if(incomplete)throw new Error("La asignación quedó incompleta antes de guardar");
+
+    persistCurrentPlan("Borrador",true);
+    showPlannerDiagnostic(`Distribución lista: ${routeCount} ruta(s), ${routeCount} conductor(es), ${routeCount} ayudante(s) y ${routeCount} vehículo(s) asignados.`,"ok");
+    toast("Distribución generada");
     return true;
   }catch(error){
     console.error("RouteMaster optimizeDistribution:",error);
+    showPlannerDiagnostic(`No se pudo generar: ${error.message||"error inesperado"}`,"error");
     toast(`No se pudo generar: ${error.message||"error inesperado"}`);
     return false;
   }
 }
+function showPlannerDiagnostic(message,type="ok"){
+  const box=qs("#plannerNotice");
+  if(!box)return;
+  box.textContent=message;
+  box.classList.remove("hidden");
+  box.dataset.type=type;
+}
+window.generateDistributionNow=optimizeDistribution;
+
 function addDaysISO(iso,days){const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+days);return dateISO(d)}
 function lastAssignment(id,kind,history){
   for(const plan of (history||[])){
