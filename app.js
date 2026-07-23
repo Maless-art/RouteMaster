@@ -14,7 +14,7 @@ const resourceMeta = {
 };
 
 document.addEventListener("DOMContentLoaded",()=>{
-  setTimeout(()=>{qs("#splash").classList.add("hidden");qs("#app").classList.remove("hidden")},2900);
+  setTimeout(()=>{qs("#splash").classList.add("hidden");qs("#app").classList.remove("hidden")},1500);
   qs("#planDate").value = dateISO(addDays(new Date(),1));
   setCurrentDate(); bindNavigation(); bindGlobalButtons(); bindCloudStatus(); loadPlanForDate(); renderAll(); startCloudSync();
 });
@@ -163,7 +163,18 @@ function renderPlanner(){
     <div class="form-group"><label>Vehículo</label><select data-vehicle="${r.id}">${vehicleOptions(r.vehicleId)}</select></div></div></div>`;list.appendChild(el)
   });
   qsa("[data-remove-plan]").forEach(b=>b.onclick=()=>{currentPlan.routes=currentPlan.routes.filter(r=>r.id!==b.dataset.removePlan);renderPlanner()});
-  qsa("[data-amount]").forEach(i=>i.oninput=e=>{const r=currentPlan.routes.find(x=>x.id===e.target.dataset.amount);r.amount=Number(e.target.value);r.difficulty=difficulty(r.amount);renderPlanner()});
+  qsa("[data-amount]").forEach(input=>{
+    input.oninput=e=>{
+      const r=currentPlan.routes.find(x=>x.id===e.target.dataset.amount);
+      if(!r)return;
+      r.amount=e.target.value===""?0:Number(e.target.value);
+      r.difficulty=difficulty(r.amount);
+      const card=e.target.closest(".plan-card");
+      const difficultyInput=card?.querySelector('input[disabled]');
+      if(difficultyInput)difficultyInput.value=r.difficulty;
+    };
+    input.onchange=()=>RouteMasterStorage.save(state);
+  });
   qsa("[data-driver]").forEach(s=>s.onchange=e=>manualAssign("driver",e.target.dataset.driver,e.target.value));
   qsa("[data-assistant]").forEach(s=>s.onchange=e=>manualAssign("assistant",e.target.dataset.assistant,e.target.value));
   qsa("[data-vehicle]").forEach(s=>s.onchange=e=>manualAssign("vehicle",e.target.dataset.vehicle,e.target.value));
@@ -180,22 +191,96 @@ function openRoutePicker(){
 }
 
 function optimizeDistribution(){
-  if(!currentPlan.routes.length)return;
-  const drivers=state.drivers.filter(x=>x.active!==false),assistants=state.assistants.filter(x=>x.active!==false),vehicles=state.vehicles.filter(x=>x.active!==false);
-  if(drivers.length<currentPlan.routes.length||assistants.length<currentPlan.routes.length||vehicles.length<currentPlan.routes.length){toast("No hay suficientes conductores, ayudantes o vehículos disponibles");return}
-  const history=state.plans.filter(p=>p.date<currentPlan.date&&p.status!=="Cancelada").sort((a,b)=>b.date.localeCompare(a.date));
-  const dScore=Object.fromEntries(drivers.map(d=>[d.id,workload(d.id,"driver",history)]));const aScore=Object.fromEntries(assistants.map(a=>[a.id,workload(a.id,"assistant",history)]));
-  const ordered=[...currentPlan.routes].sort((a,b)=>routeWeight(b)-routeWeight(a));const usedD=new Set(),usedA=new Set(),usedV=new Set();
-  ordered.forEach((r,idx)=>{
+  if(!currentPlan?.routes?.length){toast("Agrega al menos una ruta");return false}
+
+  const drivers=state.drivers.filter(x=>x.active!==false);
+  const assistants=state.assistants.filter(x=>x.active!==false);
+  const vehicles=state.vehicles.filter(x=>x.active!==false);
+  const routeCount=currentPlan.routes.length;
+
+  if(drivers.length<routeCount){toast(`Faltan conductores disponibles: necesitas ${routeCount} y hay ${drivers.length}`);return false}
+  if(assistants.length<routeCount){toast(`Faltan ayudantes disponibles: necesitas ${routeCount} y hay ${assistants.length}`);return false}
+  if(vehicles.length<routeCount){toast(`Faltan vehículos disponibles: necesitas ${routeCount} y hay ${vehicles.length}`);return false}
+
+  const history=state.plans
+    .filter(p=>p.date<currentPlan.date&&p.status!=="Cancelada")
+    .sort((a,b)=>b.date.localeCompare(a.date));
+
+  const driverLoad=Object.fromEntries(drivers.map(d=>[d.id,workload(d.id,"driver",history)]));
+  const assistantLoad=Object.fromEntries(assistants.map(a=>[a.id,workload(a.id,"assistant",history)]));
+  const lastDriverRoute=Object.fromEntries(drivers.map(d=>[d.id,lastAssignment(d.id,"driver",history)]));
+  const lastAssistantRoute=Object.fromEntries(assistants.map(a=>[a.id,lastAssignment(a.id,"assistant",history)]));
+
+  const ordered=[...currentPlan.routes].sort((a,b)=>routeWeight(b)-routeWeight(a));
+  const usedDrivers=new Set(),usedAssistants=new Set(),usedVehicles=new Set();
+
+  for(const r of ordered){
     r.difficulty=difficulty(r.amount);
-    let candidates=drivers.filter(d=>!usedD.has(d.id)&&driverAllowed(d,r,false)).sort((x,y)=>dScore[x.id]-dScore[y.id]);
-    if(!candidates.length)candidates=drivers.filter(d=>!usedD.has(d.id)).sort((x,y)=>dScore[x.id]-dScore[y.id]);
-    const d=candidates[0];usedD.add(d.id);r.driverId=d.id;r.driverName=d.name;
-    const lastPartners=recentPartners(d.id,history);let ac=assistants.filter(a=>!usedA.has(a.id)).sort((x,y)=>(lastPartners.has(x.id)?100:0)+aScore[x.id]-((lastPartners.has(y.id)?100:0)+aScore[y.id]));
-    const a=ac[0];usedA.add(a.id);r.assistantId=a.id;r.assistantName=a.name;
-    let v=vehicles.find(v=>v.id===d.preferredVehicleId&&!usedV.has(v.id))||vehicles.find(v=>!usedV.has(v.id));usedV.add(v.id);r.vehicleId=v.id;r.unit=v.unit;r.plate=v.plate;
-  });
-  currentPlan.routes=ordered;qs("#plannerNotice").textContent="Distribución optimizada según historial, restricciones, rotación de ayudantes y vehículos habituales.";qs("#plannerNotice").classList.remove("hidden");renderPlanner();toast("Distribución optimizada")
+
+    const availableDrivers=drivers.filter(d=>!usedDrivers.has(d.id));
+    const allowedDrivers=availableDrivers.filter(d=>driverAllowed(d,r,false));
+    const pool=allowedDrivers.length?allowedDrivers:availableDrivers;
+    const d=[...pool].sort((a,b)=>driverScore(a,r)-driverScore(b,r))[0];
+    if(!d){toast("No fue posible asignar un conductor");return false}
+
+    usedDrivers.add(d.id);
+    r.driverId=d.id;
+    r.driverName=d.name;
+
+    const recent=recentPartners(d.id,history);
+    const a=assistants
+      .filter(x=>!usedAssistants.has(x.id))
+      .sort((x,y)=>assistantScore(x,d,r,recent)-assistantScore(y,d,r,recent))[0];
+    if(!a){toast("No fue posible asignar un ayudante");return false}
+
+    usedAssistants.add(a.id);
+    r.assistantId=a.id;
+    r.assistantName=a.name;
+
+    const preferred=vehicles.find(v=>v.id===d.preferredVehicleId&&!usedVehicles.has(v.id));
+    const v=preferred||vehicles.find(v=>!usedVehicles.has(v.id));
+    if(!v){toast("No fue posible asignar un vehículo");return false}
+
+    usedVehicles.add(v.id);
+    r.vehicleId=v.id;
+    r.unit=v.unit;
+    r.plate=v.plate;
+  }
+
+  function driverScore(driver,route){
+    let score=driverLoad[driver.id]||0;
+    const last=lastDriverRoute[driver.id];
+    if(last){
+      if(route.routeType==="Larga"&&last.routeType==="Larga")score+=1000;
+      if(difficulty(route.amount)==="Difícil"&&last.difficulty==="Difícil")score+=300;
+      if(last.date===addDaysISO(currentPlan.date,-1))score+=25;
+    }
+    if(!driverAllowed(driver,route,false))score+=5000;
+    return score;
+  }
+
+  function assistantScore(assistant,driver,route,recentPartnersSet){
+    let score=assistantLoad[assistant.id]||0;
+    if(recentPartnersSet.has(assistant.id))score+=1000;
+    const last=lastAssistantRoute[assistant.id];
+    if(last&&route.routeType==="Larga"&&last.routeType==="Larga")score+=300;
+    return score;
+  }
+
+  currentPlan.routes=ordered;
+  qs("#plannerNotice").textContent="Distribución generada automáticamente respetando restricciones, evitando rutas largas consecutivas y rotando ayudantes.";
+  qs("#plannerNotice").classList.remove("hidden");
+  renderPlanner();
+  toast("Distribución generada");
+  return true;
+}
+function addDaysISO(iso,days){const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+days);return dateISO(d)}
+function lastAssignment(id,kind,history){
+  for(const plan of history){
+    const found=(plan.routes||[]).find(r=>(kind==="driver"?r.driverId:r.assistantId)===id);
+    if(found)return {...found,date:plan.date};
+  }
+  return null;
 }
 function routeWeight(r){const base=r.routeType==="Larga"?3:r.routeType==="Intermedia"?2:1;const diff=difficulty(r.amount)==="Difícil"?2:difficulty(r.amount)==="Intermedia"?1:0;return base+diff}
 function workload(id,kind,history){let s=0;history.slice(0,20).forEach(p=>p.routes.forEach(r=>{if((kind==="driver"?r.driverId:r.assistantId)===id)s+=routeWeight(r)}));return s}
@@ -203,7 +288,10 @@ function recentPartners(driverId,history){const set=new Set();history.slice(0,5)
 function driverAllowed(d,r,manual){const diff=difficulty(r.amount),type=r.routeType,res=d.restriction||"none";if(res==="short"&&type!=="Corta")return false;if(res==="shortMedium"&&type==="Larga")return false;if(res==="avoidLong"&&type==="Larga")return false;if(res==="avoidHard"&&diff==="Difícil")return false;if(res==="avoidLongHard"&&(type==="Larga"||diff==="Difícil"))return false;return true}
 
 function savePlan(status){
-  if(currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId)){toast("Completa todas las asignaciones antes de confirmar");if(status==="Programada")return}
+  if(currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId)){
+    const generated=optimizeDistribution();
+    if(!generated)return;
+  }
   currentPlan.status=status;currentPlan.routes.forEach(r=>r.difficulty=difficulty(r.amount));const idx=state.plans.findIndex(p=>p.date===currentPlan.date);
   if(idx>=0)state.plans[idx]=JSON.parse(JSON.stringify(currentPlan));else state.plans.push(JSON.parse(JSON.stringify(currentPlan)));
   save();toast(status==="Programada"?"Planificación confirmada":"Borrador guardado")
