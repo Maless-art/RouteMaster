@@ -1,4 +1,4 @@
-const CACHE_NAME = "routemaster-v1.0.2";
+const CACHE_NAME = "routemaster-v1.0.3";
 const ASSETS = [
   "./","./index.html","./style.css?v=1.0.0","./storage.js?v=1.0.0","./firebase.js?v=1.0.0","./app.js?v=1.0.0","./manifest.json","./logo.svg","./icono-192.png","./icono-512.png"
 ];
