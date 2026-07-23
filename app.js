@@ -4,6 +4,7 @@ window.RouteMasterState = ()=>state;
 let activeResource = null;
 let editingId = null;
 let currentPlan = null;
+let plannerDirty = false;
 
 const pageTitles = {today:"Rutas de hoy",planner:"Planificador",resources:"Recursos",history:"Historial",settings:"Configuración"};
 const resourceMeta = {
@@ -49,10 +50,13 @@ async function startCloudSync(){
     if(!cloudState||typeof cloudState!=="object")return;
     state={...state,...cloudState};
     RouteMasterStorage.save(state);
-    currentPlan=null;
-    loadPlanForDate();
+    const plannerOpen=qs("#planner")?.classList.contains("active-view");
+    if(!(plannerOpen&&plannerDirty)){
+      currentPlan=null;
+      loadPlanForDate();
+    }
     renderAll();
-    toast("Datos actualizados desde Firebase");
+    toast(plannerOpen&&plannerDirty?"Datos remotos recibidos; tu planificación sin guardar se mantuvo":"Datos actualizados desde Firebase");
   });
 }
 
@@ -150,44 +154,90 @@ function saveResource(e,type,id){e.preventDefault();const f=new FormData(e.targe
 function deleteResource(type,id){if(!confirm("¿Eliminar este registro?"))return;const col=getCollection(type),idx=col.findIndex(x=>x.id===id);if(idx>=0)col.splice(idx,1);save();toast("Registro eliminado")}
 
 function loadPlanForDate(){
-  const date=qs("#planDate").value||tomorrowISO();const existing=getPlan(date);currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[]};renderPlanner()
+  const date=qs("#planDate").value||tomorrowISO();const existing=getPlan(date);currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[]};plannerDirty=false;renderPlanner()
 }
 function renderPlanner(){
-  if(!currentPlan)return;const list=qs("#plannedRoutes");list.innerHTML="";const has=currentPlan.routes.length>0;qs("#plannerEmpty").classList.toggle("visible",!has);qs("#plannerActions").classList.toggle("hidden",!has);
+  if(!currentPlan)return;
+  const list=qs("#plannedRoutes");
+  list.innerHTML="";
+  const has=currentPlan.routes.length>0;
+  qs("#plannerEmpty").classList.toggle("visible",!has);
+  qs("#plannerActions").classList.toggle("hidden",!has);
+
   currentPlan.routes.forEach(r=>{
-    const el=document.createElement("article");el.className="plan-card";el.style.setProperty("--route-color",routeColor(r.routeType));
-    el.innerHTML=`<div class="plan-content"><div class="plan-top"><div><h3>${escapeHtml(r.routeName)}</h3><p class="route-meta">${escapeHtml(r.routeType)} · ${escapeHtml(r.km)} km · ${escapeHtml(r.hours)} h</p></div><button class="icon-action" data-remove-plan="${r.id}">Eliminar</button></div>
-    <div class="plan-grid"><div class="form-group"><label>Monto estimado</label><input data-amount="${r.id}" type="number" min="0" step="0.01" value="${r.amount||0}"></div><div class="form-group"><label>Dificultad</label><input value="${difficulty(r.amount)}" disabled></div><div class="form-group"><label>Estado</label><input value="${r.status||"Pendiente"}" disabled></div></div>
-    <div class="assignment-grid"><div class="form-group"><label>Conductor</label><select data-driver="${r.id}">${personOptions(state.drivers,r.driverId,"Sin asignar")}</select></div>
-    <div class="form-group"><label>Ayudante</label><select data-assistant="${r.id}">${personOptions(state.assistants,r.assistantId,"Sin asignar")}</select></div>
-    <div class="form-group"><label>Vehículo</label><select data-vehicle="${r.id}">${vehicleOptions(r.vehicleId)}</select></div></div></div>`;list.appendChild(el)
+    const dot=difficultyDot(r.amount);
+    const el=document.createElement("article");
+    el.className="plan-card";
+    el.style.setProperty("--route-color",routeColor(r.routeType));
+    el.innerHTML=`<div class="plan-content">
+      <div class="plan-top">
+        <div class="plan-title-wrap">
+          <div class="plan-title-line"><h3>${escapeHtml(r.routeName)}</h3><span class="difficulty-dot ${dot.className}" title="${dot.label}"></span></div>
+          <p class="route-meta">${escapeHtml(r.routeType)} · ${escapeHtml(r.km)} km · ${escapeHtml(r.hours)} h</p>
+        </div>
+        <button class="icon-action" data-remove-plan="${r.id}">Eliminar</button>
+      </div>
+
+      <div class="amount-compact">
+        <label for="amount-${r.id}">Monto estimado</label>
+        <div class="amount-input-wrap"><span>B/.</span><input id="amount-${r.id}" data-amount="${r.id}" type="number" inputmode="decimal" min="0" step="0.01" value="${r.amount||""}" placeholder="0.00"></div>
+      </div>
+
+      <div class="assignment-grid">
+        <div class="form-group"><label>Conductor</label><select data-driver="${r.id}">${personOptions(state.drivers,r.driverId,"Sin asignar")}</select></div>
+        <div class="form-group"><label>Ayudante</label><select data-assistant="${r.id}">${personOptions(state.assistants,r.assistantId,"Sin asignar")}</select></div>
+        <div class="form-group"><label>Vehículo</label><select data-vehicle="${r.id}">${vehicleOptions(r.vehicleId)}</select></div>
+      </div>
+    </div>`;
+    list.appendChild(el);
+
+    el.querySelector(`[data-driver="${r.id}"]`).value=r.driverId||"";
+    el.querySelector(`[data-assistant="${r.id}"]`).value=r.assistantId||"";
+    el.querySelector(`[data-vehicle="${r.id}"]`).value=r.vehicleId||"";
   });
-  qsa("[data-remove-plan]").forEach(b=>b.onclick=()=>{currentPlan.routes=currentPlan.routes.filter(r=>r.id!==b.dataset.removePlan);renderPlanner()});
+
+  qsa("[data-remove-plan]").forEach(b=>b.onclick=()=>{
+    currentPlan.routes=currentPlan.routes.filter(r=>r.id!==b.dataset.removePlan);
+    plannerDirty=true;
+    renderPlanner();
+  });
+
   qsa("[data-amount]").forEach(input=>{
     input.oninput=e=>{
       const r=currentPlan.routes.find(x=>x.id===e.target.dataset.amount);
       if(!r)return;
       r.amount=e.target.value===""?0:Number(e.target.value);
       r.difficulty=difficulty(r.amount);
-      const card=e.target.closest(".plan-card");
-      const difficultyInput=card?.querySelector('input[disabled]');
-      if(difficultyInput)difficultyInput.value=r.difficulty;
+      plannerDirty=true;
+      const dot=e.target.closest(".plan-card")?.querySelector(".difficulty-dot");
+      if(dot){
+        const info=difficultyDot(r.amount);
+        dot.className=`difficulty-dot ${info.className}`;
+        dot.title=info.label;
+      }
     };
-    input.onchange=()=>RouteMasterStorage.save(state);
   });
   qsa("[data-driver]").forEach(s=>s.onchange=e=>manualAssign("driver",e.target.dataset.driver,e.target.value));
   qsa("[data-assistant]").forEach(s=>s.onchange=e=>manualAssign("assistant",e.target.dataset.assistant,e.target.value));
   qsa("[data-vehicle]").forEach(s=>s.onchange=e=>manualAssign("vehicle",e.target.dataset.vehicle,e.target.value));
 }
+function difficultyDot(amount){
+  const n=Number(amount||0);
+  if(n<=0)return {className:"dot-off",label:"Dificultad pendiente"};
+  const level=difficulty(n);
+  if(level==="Difícil")return {className:"dot-hard",label:"Ruta difícil"};
+  if(level==="Intermedia")return {className:"dot-medium",label:"Ruta intermedia"};
+  return {className:"dot-simple",label:"Ruta sencilla"};
+}
 function personOptions(list,selected,empty){return `<option value="">${empty}</option>`+list.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${x.id===selected?"selected":""}>${escapeHtml(x.name)}</option>`).join("")}
 function vehicleOptions(selected){return `<option value="">Sin asignar</option>`+state.vehicles.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${x.id===selected?"selected":""}>${escapeHtml(x.unit)} · ${escapeHtml(x.plate)}</option>`).join("")}
 function manualAssign(kind,routeId,id){const r=currentPlan.routes.find(x=>x.id===routeId);if(kind==="driver"){const p=state.drivers.find(x=>x.id===id);if(p&&!driverAllowed(p,r,true))toast("Advertencia: esta asignación no coincide con su perfil operativo");r.driverId=id;r.driverName=p?.name||""}
   if(kind==="assistant"){const p=state.assistants.find(x=>x.id===id);r.assistantId=id;r.assistantName=p?.name||""}
-  if(kind==="vehicle"){const v=state.vehicles.find(x=>x.id===id);r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||""}renderPlanner()}
+  if(kind==="vehicle"){const v=state.vehicles.find(x=>x.id===id);r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||""}plannerDirty=true;renderPlanner()}
 function openRoutePicker(){
   if(!state.routeCatalog.length){toast("Primero crea rutas en Recursos");showView("resources");openResource("routes");return}
   qs("#modalTitle").textContent="Agregar rutas";qs("#modalBody").innerHTML=`<div class="modal-body-inner"><div class="checkbox-list">${state.routeCatalog.map(r=>`<div class="checkbox-item"><label><input type="checkbox" value="${r.id}" ${currentPlan.routes.some(x=>x.routeId===r.id)?"disabled":""}><span><strong>${escapeHtml(r.name)}</strong><br><small>${r.type} · ${r.km} km · ${r.hours} h</small></span></label></div>`).join("")}</div><div class="form-actions"><button id="cancelPicker" class="secondary-button">Cancelar</button><button id="addSelectedRoutes" class="primary-button">Agregar seleccionadas</button></div></div>`;
-  openModal();qs("#cancelPicker").onclick=closeModal;qs("#addSelectedRoutes").onclick=()=>{qsa('#modalBody input[type="checkbox"]:checked').forEach(c=>{const rt=state.routeCatalog.find(r=>r.id===c.value);currentPlan.routes.push({id:uid(),routeId:rt.id,routeName:rt.name,routeType:rt.type,km:rt.km,hours:rt.hours,amount:0,difficulty:"Sencilla",status:"Pendiente",driverId:"",driverName:"",assistantId:"",assistantName:"",vehicleId:"",unit:"",plate:""})});closeModal();renderPlanner()}
+  openModal();qs("#cancelPicker").onclick=closeModal;qs("#addSelectedRoutes").onclick=()=>{qsa('#modalBody input[type="checkbox"]:checked').forEach(c=>{const rt=state.routeCatalog.find(r=>r.id===c.value);currentPlan.routes.push({id:uid(),routeId:rt.id,routeName:rt.name,routeType:rt.type,km:rt.km,hours:rt.hours,amount:0,difficulty:"Sencilla",status:"Pendiente",driverId:"",driverName:"",assistantId:"",assistantName:"",vehicleId:"",unit:"",plate:""})});plannerDirty=true;closeModal();renderPlanner()}
 }
 
 function optimizeDistribution(){
@@ -268,10 +318,12 @@ function optimizeDistribution(){
   }
 
   currentPlan.routes=ordered;
+  plannerDirty=true;
+  persistCurrentPlan("Borrador",true);
   qs("#plannerNotice").textContent="Distribución generada automáticamente respetando restricciones, evitando rutas largas consecutivas y rotando ayudantes.";
   qs("#plannerNotice").classList.remove("hidden");
   renderPlanner();
-  toast("Distribución generada");
+  toast("Distribución generada y guardada");
   return true;
 }
 function addDaysISO(iso,days){const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+days);return dateISO(d)}
@@ -287,14 +339,24 @@ function workload(id,kind,history){let s=0;history.slice(0,20).forEach(p=>p.rout
 function recentPartners(driverId,history){const set=new Set();history.slice(0,5).forEach(p=>p.routes.forEach(r=>{if(r.driverId===driverId&&r.assistantId)set.add(r.assistantId)}));return set}
 function driverAllowed(d,r,manual){const diff=difficulty(r.amount),type=r.routeType,res=d.restriction||"none";if(res==="short"&&type!=="Corta")return false;if(res==="shortMedium"&&type==="Larga")return false;if(res==="avoidLong"&&type==="Larga")return false;if(res==="avoidHard"&&diff==="Difícil")return false;if(res==="avoidLongHard"&&(type==="Larga"||diff==="Difícil"))return false;return true}
 
+function persistCurrentPlan(status="Borrador",immediate=false){
+  currentPlan.status=status;
+  currentPlan.routes.forEach(r=>r.difficulty=difficulty(r.amount));
+  const copy=JSON.parse(JSON.stringify(currentPlan));
+  const idx=state.plans.findIndex(p=>p.date===currentPlan.date);
+  if(idx>=0)state.plans[idx]=copy;else state.plans.push(copy);
+  RouteMasterStorage.save(state);
+  window.RouteMasterCloud?.queuePush(state,immediate);
+  plannerDirty=false;
+}
 function savePlan(status){
   if(currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId)){
     const generated=optimizeDistribution();
     if(!generated)return;
   }
-  currentPlan.status=status;currentPlan.routes.forEach(r=>r.difficulty=difficulty(r.amount));const idx=state.plans.findIndex(p=>p.date===currentPlan.date);
-  if(idx>=0)state.plans[idx]=JSON.parse(JSON.stringify(currentPlan));else state.plans.push(JSON.parse(JSON.stringify(currentPlan)));
-  save();toast(status==="Programada"?"Planificación confirmada":"Borrador guardado")
+  persistCurrentPlan(status,true);
+  renderAll();
+  toast(status==="Programada"?"Planificación confirmada":"Borrador guardado");
 }
 function editTodayAssignment(id){showView("planner");qs("#planDate").value=todayISO();loadPlanForDate();setTimeout(()=>document.querySelector(`[data-driver="${id}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}),100)}
 
