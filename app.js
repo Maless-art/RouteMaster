@@ -51,12 +51,15 @@ async function startCloudSync(){
     state={...state,...cloudState};
     RouteMasterStorage.save(state);
     const plannerOpen=qs("#planner")?.classList.contains("active-view");
-    if(!(plannerOpen&&plannerDirty)){
+    // Mientras el Planificador esté abierto, nunca sustituimos currentPlan con una
+    // instantánea remota. Esto evita que Firebase reponga una versión anterior con
+    // los selectores vacíos justo después de generar la distribución.
+    if(!plannerOpen){
       currentPlan=null;
       loadPlanForDate();
     }
     renderAll();
-    toast(plannerOpen&&plannerDirty?"Datos remotos recibidos; tu planificación sin guardar se mantuvo":"Datos actualizados desde Firebase");
+    toast(plannerOpen?"Datos remotos recibidos; la planificación abierta se conservó":"Datos actualizados desde Firebase");
   });
 }
 
@@ -233,8 +236,8 @@ function difficultyDot(amount){
   if(level==="Normal")return {className:"dot-medium",label:"Dificultad normal"};
   return {className:"dot-simple",label:"Ruta sencilla"};
 }
-function personOptions(list,selected,empty){return `<option value="">${empty}</option>`+list.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${x.id===selected?"selected":""}>${escapeHtml(x.name)}</option>`).join("")}
-function vehicleOptions(selected){return `<option value="">Sin asignar</option>`+state.vehicles.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${x.id===selected?"selected":""}>${escapeHtml(x.unit)} · ${escapeHtml(x.plate)}</option>`).join("")}
+function personOptions(list,selected,empty){return `<option value="">${empty}</option>`+list.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${String(x.id)===String(selected)?"selected":""}>${escapeHtml(x.name)}</option>`).join("")}
+function vehicleOptions(selected){return `<option value="">Sin asignar</option>`+state.vehicles.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${String(x.id)===String(selected)?"selected":""}>${escapeHtml(x.unit)} · ${escapeHtml(x.plate)}</option>`).join("")}
 function manualAssign(kind,routeId,id){const r=currentPlan.routes.find(x=>x.id===routeId);if(kind==="driver"){const p=state.drivers.find(x=>x.id===id);if(p&&!driverAllowed(p,r,true))toast("Advertencia: esta asignación no coincide con su perfil operativo");r.driverId=id;r.driverName=p?.name||""}
   if(kind==="assistant"){const p=state.assistants.find(x=>x.id===id);r.assistantId=id;r.assistantName=p?.name||""}
   if(kind==="vehicle"){const v=state.vehicles.find(x=>x.id===id);r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||""}plannerDirty=true;renderPlanner()}
@@ -382,7 +385,8 @@ function persistCurrentPlan(status="Borrador",immediate=false){
   if(idx>=0)state.plans[idx]=copy;else state.plans.push(copy);
   RouteMasterStorage.save(state);
   window.RouteMasterCloud?.queuePush(state,immediate);
-  plannerDirty=false;
+  // Se mantiene protegido el borrador mientras el Planificador esté abierto.
+  plannerDirty=!!qs("#planner")?.classList.contains("active-view");
 }
 function savePlan(status){
   if(currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId)){
