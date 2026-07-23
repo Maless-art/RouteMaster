@@ -13,7 +13,7 @@ const resourceMeta = {
 };
 
 document.addEventListener("DOMContentLoaded",()=>{
-  setTimeout(()=>{qs("#splash").classList.add("hidden");qs("#app").classList.remove("hidden")},900);
+  setTimeout(()=>{qs("#splash").classList.add("hidden");qs("#app").classList.remove("hidden")},2900);
   qs("#planDate").value = dateISO(addDays(new Date(),1));
   setCurrentDate(); bindNavigation(); bindGlobalButtons(); loadPlanForDate(); renderAll();
 });
