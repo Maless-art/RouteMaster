@@ -58,3 +58,13 @@ button,input,select,textarea{font:inherit}.hidden{display:none!important}
 .share-options input{width:auto}
 .share-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}
 @media(max-width:560px){.share-button{width:100%}.share-actions button{flex:1}}
+
+
+/* Firebase sync status - v1.0.0 */
+.cloud-status{margin-left:auto;display:flex;align-items:center;gap:8px;padding:10px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:.82rem;font-weight:800;box-shadow:0 8px 20px rgba(18,42,34,.06);white-space:nowrap}
+.cloud-dot{width:9px;height:9px;border-radius:50%;background:#a0aaa5;box-shadow:0 0 0 4px rgba(160,170,165,.14)}
+.cloud-online .cloud-dot{background:#2f9a65;box-shadow:0 0 0 4px rgba(47,154,101,.14)}
+.cloud-syncing .cloud-dot,.cloud-connecting .cloud-dot{background:#d5a82f;box-shadow:0 0 0 4px rgba(213,168,47,.15)}
+.cloud-offline .cloud-dot,.cloud-error .cloud-dot{background:#b94a4a;box-shadow:0 0 0 4px rgba(185,74,74,.14)}
+.cloud-online{color:#246d4d}.cloud-offline,.cloud-error{color:#9d3d3d}.cloud-syncing,.cloud-connecting{color:#755b0e}
+@media(max-width:560px){.cloud-status{padding:9px}.cloud-status span:last-child{display:none}}

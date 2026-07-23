@@ -1,18 +1,20 @@
-ROUTEMASTER v0.9.2 - PAQUETE PARA VERCEL
+ROUTEMASTER v1.0.0 CONNECTED
 
-Sube EL CONTENIDO de esta carpeta como raíz del proyecto.
-Todos los archivos deben quedar al mismo nivel:
+1. IMPORTANTE: activa las reglas de Firestore.
+   Firebase Console > Firestore Database > Reglas.
+   Copia el contenido de firestore.rules, pégalo y pulsa Publicar.
 
-index.html
-style.css
-app.js
-storage.js
-service-worker.js
-manifest.json
-logo.svg
-icono-192.png
-icono-512.png
-vercel.json
+2. Sube a Vercel TODO el contenido de esta carpeta, de modo que index.html quede en la raíz.
 
-No crees carpetas css o js para esta versión.
-La clave localStorage se mantiene como routemaster_v0_5_0.
+3. Abre primero RouteMaster en la computadora que ya contiene tus recursos.
+   Si Firebase está vacío, esa computadora subirá automáticamente los datos locales.
+
+4. Después abre la misma URL en la computadora de tu primo.
+   Recibirá los recursos y las planificaciones en tiempo real.
+
+5. El localStorage usa la misma clave de versiones anteriores: routemaster_v0_5_0.
+   No se eliminan los datos existentes.
+
+6. Compartir: en Hoy o Planificador, pulsa Compartir. Puedes copiar el texto o usar el menú de compartir del dispositivo.
+
+ADVERTENCIA: estas reglas permiten lectura y escritura pública porque esta versión aún no usa autenticación. En v1.1 se debe restringir el acceso.

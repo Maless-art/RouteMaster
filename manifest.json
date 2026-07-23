@@ -6,7 +6,7 @@
   "display": "standalone",
   "background_color": "#f3f5f3",
   "theme_color": "#17362c",
-  "description": "Planificación y control de rutas de entrega.",
+  "description": "Planificación, sincronización y consulta de rutas de entrega.",
   "icons": [
     {"src":"icono-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
     {"src":"icono-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}

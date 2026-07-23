@@ -1,5 +1,6 @@
 
 let state = RouteMasterStorage.load();
+window.RouteMasterState = ()=>state;
 let activeResource = null;
 let editingId = null;
 let currentPlan = null;
@@ -15,7 +16,7 @@ const resourceMeta = {
 document.addEventListener("DOMContentLoaded",()=>{
   setTimeout(()=>{qs("#splash").classList.add("hidden");qs("#app").classList.remove("hidden")},2900);
   qs("#planDate").value = dateISO(addDays(new Date(),1));
-  setCurrentDate(); bindNavigation(); bindGlobalButtons(); loadPlanForDate(); renderAll();
+  setCurrentDate(); bindNavigation(); bindGlobalButtons(); bindCloudStatus(); loadPlanForDate(); renderAll(); startCloudSync();
 });
 
 function qs(s){return document.querySelector(s)} function qsa(s){return [...document.querySelectorAll(s)]}
@@ -26,9 +27,34 @@ function todayISO(){return dateISO(new Date())}
 function tomorrowISO(){return dateISO(addDays(new Date(),1))}
 function money(v){return new Intl.NumberFormat("es-PA",{style:"currency",currency:"PAB"}).format(Number(v||0))}
 function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
-function save(){RouteMasterStorage.save(state);renderAll()}
+function save(){RouteMasterStorage.save(state);window.RouteMasterCloud?.queuePush(state);renderAll()}
 function toast(msg){const t=qs("#toast");t.textContent=msg;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2200)}
 function setCurrentDate(){const f=new Intl.DateTimeFormat("es-PA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date());qs("#currentDate").textContent=f[0].toUpperCase()+f.slice(1)}
+
+
+function bindCloudStatus(){
+  window.addEventListener("routemaster-cloud-status",event=>{
+    const detail=event.detail||{};
+    const el=qs("#cloudStatus"),text=qs("#cloudStatusText");
+    if(!el||!text)return;
+    el.className=`cloud-status cloud-${detail.state||"connecting"}`;
+    text.textContent=detail.label||"Conectando";
+    el.title=detail.message||"Estado de sincronización con Firebase";
+  });
+}
+
+async function startCloudSync(){
+  if(!window.RouteMasterCloud)return;
+  await window.RouteMasterCloud.start(state,cloudState=>{
+    if(!cloudState||typeof cloudState!=="object")return;
+    state={...state,...cloudState};
+    RouteMasterStorage.save(state);
+    currentPlan=null;
+    loadPlanForDate();
+    renderAll();
+    toast("Datos actualizados desde Firebase");
+  });
+}
 
 function bindNavigation(){
   qsa(".nav-item").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
@@ -195,8 +221,8 @@ function formatDate(s){return new Intl.DateTimeFormat("es-PA",{weekday:"long",da
 function renderSettings(){qs("#simpleMax").value=state.settings.simpleMax;qs("#mediumMax").value=state.settings.mediumMax}
 function saveSettings(){const a=Number(qs("#simpleMax").value),b=Number(qs("#mediumMax").value);if(a<0||b<=a){toast("Revisa los límites de dificultad");return}state.settings={simpleMax:a,mediumMax:b};save();toast("Reglas guardadas")}
 function exportBackup(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`RouteMaster-respaldo-${todayISO()}.json`;a.click();URL.revokeObjectURL(a.href)}
-function importBackup(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!data||!Array.isArray(data.plans))throw new Error();state=data;RouteMasterStorage.save(state);renderAll();toast("Respaldo importado")}catch{toast("El archivo no es un respaldo válido")}};reader.readAsText(file);e.target.value=""}
-function resetApp(){if(!confirm("Esto eliminará todos los datos. ¿Continuar?"))return;state=RouteMasterStorage.reset();currentPlan=null;qs("#planDate").value=tomorrowISO();loadPlanForDate();renderAll();toast("Aplicación reiniciada")}
+function importBackup(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!data||!Array.isArray(data.plans))throw new Error();state=data;RouteMasterStorage.save(state);window.RouteMasterCloud?.queuePush(state,true);renderAll();toast("Respaldo importado y sincronizado")}catch{toast("El archivo no es un respaldo válido")}};reader.readAsText(file);e.target.value=""}
+function resetApp(){if(!confirm("Esto eliminará todos los datos. ¿Continuar?"))return;state=RouteMasterStorage.reset();window.RouteMasterCloud?.queuePush(state,true);currentPlan=null;qs("#planDate").value=tomorrowISO();loadPlanForDate();renderAll();toast("Aplicación reiniciada")}
 function openModal(){qs("#modal").classList.remove("hidden")}function closeModal(){qs("#modal").classList.add("hidden");qs("#modalBody").innerHTML=""}
 
 
@@ -209,6 +235,7 @@ function openShareDialog(plan){
     <div class="share-actions">
       <button id="cancelShareButton" class="secondary-button">Cerrar</button>
       <button id="copyShareButton" class="secondary-button">📋 Copiar</button>
+      <button id="whatsappShareButton" class="success-button">💬 WhatsApp</button>
       <button id="nativeShareButton" class="primary-button">📤 Compartir</button>
     </div>
   </div>`;
@@ -217,6 +244,10 @@ function openShareDialog(plan){
   qs("#includeAmounts").addEventListener("change",refresh);refresh();openModal();
   qs("#cancelShareButton").onclick=closeModal;
   qs("#copyShareButton").onclick=async()=>{await copyText(preview.value);toast("Planificación copiada")};
+  qs("#whatsappShareButton").onclick=()=>{
+    const url=`https://wa.me/?text=${encodeURIComponent(preview.value)}`;
+    window.open(url,"_blank","noopener,noreferrer");
+  };
   qs("#nativeShareButton").onclick=async()=>{
     const text=preview.value;
     if(navigator.share){
