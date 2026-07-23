@@ -1,0 +1,9 @@
+{
+  "name": "RouteMaster",
+  "short_name": "RouteMaster",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f5f3",
+  "theme_color": "#17362c",
+  "description": "Planificación y control de rutas de entrega."
+}

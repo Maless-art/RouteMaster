@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#17362c" />
+  <title>RouteMaster</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="splash" class="splash">
+    <div class="brand-mark"><span></span><span></span><span></span></div>
+    <h1>RouteMaster</h1>
+    <p>La mejor ruta comienza con una buena planificación.</p>
+    <div class="loading-bar"><i></i></div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <div class="mini-mark"><span></span><span></span><span></span></div>
+        <div><strong>RouteMaster</strong><small>Logística de rutas</small></div>
+      </div>
+      <nav class="main-nav">
+        <button class="nav-item active" data-view="today"><span>◉</span> Hoy</button>
+        <button class="nav-item" data-view="planner"><span>▣</span> Planificador</button>
+        <button class="nav-item" data-view="resources"><span>◆</span> Recursos</button>
+        <button class="nav-item" data-view="history"><span>↺</span> Historial</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span> Configuración</button>
+      </nav>
+      <div class="sidebar-footer"><span>RouteMaster</span><small>v0.5.1</small></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuButton" class="menu-button">☰</button>
+        <div><h2 id="pageTitle">Rutas de hoy</h2><p id="currentDate"></p></div>
+        <button id="alertButton" class="icon-button"><span>🔔</span><b id="alertCount">0</b></button>
+      </header>
+
+      <section id="today" class="view active-view">
+        <div class="summary-grid">
+          <article class="summary-card"><span class="summary-icon">🚚</span><div><strong id="todayRoutesCount">0</strong><small>Rutas hoy</small></div></article>
+          <article class="summary-card"><span class="summary-icon">⏳</span><div><strong id="activeRoutesCount">0</strong><small>En desarrollo</small></div></article>
+          <article class="summary-card"><span class="summary-icon">📅</span><div><strong id="tomorrowRoutesCount">0</strong><small>Planificadas mañana</small></div></article>
+        </div>
+
+        <div class="section-heading">
+          <div><h3>Operación actual</h3><p>Consulta quién salió, con quién y en qué unidad.</p></div>
+        </div>
+
+        <div class="search-box"><span>⌕</span><input id="todaySearch" type="search" placeholder="Buscar ruta, conductor, ayudante, unidad o placa..." /></div>
+        <div id="todayRoutes" class="route-grid"></div>
+        <div id="todayEmpty" class="empty-state">
+          <div class="empty-icon">🛣️</div><h3>No hay rutas registradas para hoy</h3>
+          <p>Puedes crear una planificación para hoy o para mañana desde el Planificador.</p>
+          <button class="primary-button" data-go="planner">Ir al planificador</button>
+        </div>
+      </section>
+
+      <section id="planner" class="view">
+        <div class="planner-toolbar card">
+          <div>
+            <label for="planDate">Fecha de planificación</label>
+            <input id="planDate" type="date" />
+          </div>
+          <div class="toolbar-actions">
+            <button id="addRouteButton" class="primary-button">+ Agregar rutas</button>
+          </div>
+        </div>
+
+        <div id="plannerNotice" class="notice hidden"></div>
+        <div id="plannedRoutes" class="planner-list"></div>
+
+        <div id="plannerEmpty" class="empty-state visible">
+          <div class="empty-icon">📅</div><h3>Aún no agregaste rutas</h3>
+          <p>Usa el botón <strong>Agregar rutas</strong> de la parte superior para comenzar.</p>
+        </div>
+
+        <div id="plannerActions" class="planner-actions hidden">
+          <button id="optimizeButton" class="primary-button big-button">⚙ Optimizar distribución</button>
+          <button id="saveDraftButton" class="secondary-button">Guardar borrador</button>
+          <button id="confirmPlanButton" class="success-button">Confirmar planificación</button>
+        </div>
+      </section>
+
+      <section id="resources" class="view">
+        <div class="resource-grid">
+          <button class="resource-card" data-resource="drivers"><span>👤</span><strong>Conductores</strong><small id="driversCount">0 registrados</small></button>
+          <button class="resource-card" data-resource="assistants"><span>👥</span><strong>Ayudantes</strong><small id="assistantsCount">0 registrados</small></button>
+          <button class="resource-card" data-resource="vehicles"><span>🚚</span><strong>Vehículos</strong><small id="vehiclesCount">0 registrados</small></button>
+          <button class="resource-card" data-resource="routes"><span>📍</span><strong>Rutas</strong><small id="routesCount">0 registradas</small></button>
+        </div>
+
+        <div id="resourcePanel" class="resource-panel hidden">
+          <div class="section-heading">
+            <div><h3 id="resourceTitle">Recursos</h3><p id="resourceSubtitle"></p></div>
+            <button id="newResourceButton" class="primary-button">+ Crear</button>
+          </div>
+          <div id="resourceList" class="data-list"></div>
+        </div>
+      </section>
+
+      <section id="history" class="view">
+        <div class="section-heading"><div><h3>Historial de planificaciones</h3><p>Distribuciones guardadas por fecha.</p></div></div>
+        <div id="historyList" class="history-list"></div>
+        <div id="historyEmpty" class="empty-state visible"><div class="empty-icon">↺</div><h3>Aún no hay historial</h3><p>Las planificaciones confirmadas aparecerán aquí.</p></div>
+      </section>
+
+      <section id="settings" class="view">
+        <div class="settings-grid">
+          <article class="card settings-card">
+            <h3>Reglas de dificultad</h3>
+            <label>Sencilla hasta B/.</label><input id="simpleMax" type="number" min="0" step="0.01" />
+            <label>Intermedia hasta B/.</label><input id="mediumMax" type="number" min="0" step="0.01" />
+            <button id="saveSettingsButton" class="primary-button">Guardar reglas</button>
+          </article>
+
+          <article class="card settings-card">
+            <h3>Respaldo de datos</h3>
+            <p>Exporta periódicamente una copia para evitar pérdidas del almacenamiento local.</p>
+            <button id="exportButton" class="secondary-button">Exportar respaldo</button>
+            <label class="file-button">Importar respaldo<input id="importInput" type="file" accept=".json,application/json" /></label>
+          </article>
+
+          <article class="card settings-card danger-card">
+            <h3>Reiniciar aplicación</h3>
+            <p>Elimina todos los datos guardados en este navegador.</p>
+            <button id="resetButton" class="danger-button">Eliminar todos los datos</button>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header"><h3 id="modalTitle">Formulario</h3><button id="closeModalButton">×</button></div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js");
+  </script>
+</body>
+</html>
