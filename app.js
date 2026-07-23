@@ -50,6 +50,8 @@ function bindGlobalButtons(){
   qs("#addRouteButton").addEventListener("click",openRoutePicker);
   qs("#planDate").addEventListener("change",loadPlanForDate);
   qs("#optimizeButton").addEventListener("click",optimizeDistribution);
+  qs("#shareTodayButton").addEventListener("click",()=>openShareDialog(getPlan(todayISO())));
+  qs("#sharePlanButton").addEventListener("click",()=>openShareDialog(currentPlan));
   qs("#saveDraftButton").addEventListener("click",()=>savePlan("Borrador"));
   qs("#confirmPlanButton").addEventListener("click",()=>savePlan("Programada"));
   qs("#saveSettingsButton").addEventListener("click",saveSettings);
@@ -66,19 +68,14 @@ function renderCounts(){
 function getPlan(date){return state.plans.find(p=>p.date===date)}
 function renderToday(filter=""){
   const plan=getPlan(todayISO());const routes=(plan?.routes||[]).filter(r=>[r.routeName,r.driverName,r.assistantName,r.unit,r.plate].join(" ").toLowerCase().includes(filter));
-  qs("#todayRoutesCount").textContent=plan?.routes.length||0;qs("#activeRoutesCount").textContent=(plan?.routes||[]).filter(r=>r.status==="En desarrollo").length;
-  qs("#tomorrowRoutesCount").textContent=getPlan(tomorrowISO())?.routes.length||0;
+  qs("#todayRoutesCount").textContent=plan?.routes.length||0;
   const c=qs("#todayRoutes");c.innerHTML="";qs("#todayEmpty").classList.toggle("visible",routes.length===0);
   routes.forEach(r=>{
     const el=document.createElement("article");el.className="route-card";el.style.setProperty("--route-color",routeColor(r.routeType));
-    el.innerHTML=`<div class="route-content"><div class="route-top"><div><h3>${escapeHtml(r.routeName)}</h3><p class="route-meta">${escapeHtml(r.routeType)} · ${escapeHtml(r.difficulty)}</p></div><span class="route-badge">${escapeHtml(r.status||"Pendiente")}</span></div>
-    <div class="route-details"><div><small>Kilómetros</small><strong>${escapeHtml(r.km)} km</strong></div><div><small>Duración</small><strong>${escapeHtml(r.hours)} h</strong></div><div><small>Monto</small><strong>${money(r.amount)}</strong></div></div>
-    <div class="route-person"><div><small>Conductor</small><strong>${escapeHtml(r.driverName||"Sin asignar")}</strong></div><div><small>Ayudante</small><strong>${escapeHtml(r.assistantName||"Sin asignar")}</strong></div><div><small>Unidad</small><strong>${escapeHtml(r.unit||"—")} · ${escapeHtml(r.plate||"—")}</strong></div></div>
-    <div class="route-footer"><select data-status="${r.id}">${["Pendiente","En desarrollo","Completada","Cancelada"].map(s=>`<option ${s===r.status?"selected":""}>${s}</option>`).join("")}</select><button data-edit-today="${r.id}">Editar →</button></div></div>`;
+    el.innerHTML=`<div class="route-content"><div class="route-top"><div><h3>${escapeHtml(r.routeName)}</h3><p class="route-meta">${escapeHtml(r.routeType)}</p></div></div>
+    <div class="route-person"><div><small>Conductor</small><strong>${escapeHtml(r.driverName||"Sin asignar")}</strong></div><div><small>Ayudante</small><strong>${escapeHtml(r.assistantName||"Sin asignar")}</strong></div><div><small>Unidad</small><strong>${escapeHtml(r.unit||"—")} · ${escapeHtml(r.plate||"—")}</strong></div></div></div>`;
     c.appendChild(el)
   });
-  qsa("[data-status]").forEach(s=>s.addEventListener("change",e=>{const p=getPlan(todayISO());const r=p.routes.find(x=>x.id===e.target.dataset.status);r.status=e.target.value;save()}));
-  qsa("[data-edit-today]").forEach(b=>b.addEventListener("click",()=>editTodayAssignment(b.dataset.editToday)));
 }
 
 function routeColor(type=""){type=type.toLowerCase();return type.includes("larga")?"#b54a4a":type.includes("intermedia")?"#d5a82f":"#3a8b64"}
@@ -201,3 +198,47 @@ function exportBackup(){const blob=new Blob([JSON.stringify(state,null,2)],{type
 function importBackup(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!data||!Array.isArray(data.plans))throw new Error();state=data;RouteMasterStorage.save(state);renderAll();toast("Respaldo importado")}catch{toast("El archivo no es un respaldo válido")}};reader.readAsText(file);e.target.value=""}
 function resetApp(){if(!confirm("Esto eliminará todos los datos. ¿Continuar?"))return;state=RouteMasterStorage.reset();currentPlan=null;qs("#planDate").value=tomorrowISO();loadPlanForDate();renderAll();toast("Aplicación reiniciada")}
 function openModal(){qs("#modal").classList.remove("hidden")}function closeModal(){qs("#modal").classList.add("hidden");qs("#modalBody").innerHTML=""}
+
+
+function openShareDialog(plan){
+  if(!plan || !Array.isArray(plan.routes) || !plan.routes.length){toast("No hay rutas para compartir");return}
+  qs("#modalTitle").textContent="Compartir planificación";
+  qs("#modalBody").innerHTML=`<div class="modal-body-inner">
+    <label class="share-options"><input id="includeAmounts" type="checkbox"> Incluir montos de las rutas</label>
+    <textarea id="sharePreview" class="share-preview" readonly></textarea>
+    <div class="share-actions">
+      <button id="cancelShareButton" class="secondary-button">Cerrar</button>
+      <button id="copyShareButton" class="secondary-button">📋 Copiar</button>
+      <button id="nativeShareButton" class="primary-button">📤 Compartir</button>
+    </div>
+  </div>`;
+  const preview=qs("#sharePreview");
+  const refresh=()=>preview.value=buildShareText(plan,qs("#includeAmounts").checked);
+  qs("#includeAmounts").addEventListener("change",refresh);refresh();openModal();
+  qs("#cancelShareButton").onclick=closeModal;
+  qs("#copyShareButton").onclick=async()=>{await copyText(preview.value);toast("Planificación copiada")};
+  qs("#nativeShareButton").onclick=async()=>{
+    const text=preview.value;
+    if(navigator.share){
+      try{await navigator.share({title:`RouteMaster - ${formatDate(plan.date)}`,text})}catch(error){if(error?.name!=="AbortError")await copyText(text)}
+    }else{
+      await copyText(text);toast("Copiada. Ya puedes pegarla en WhatsApp")
+    }
+  };
+}
+function buildShareText(plan,includeAmounts=false){
+  const lines=["🚚 *ROUTEMASTER*",`📅 ${formatDate(plan.date)}`,""];
+  plan.routes.forEach((r,index)=>{
+    lines.push(`📍 *${r.routeName||"Ruta"}*`);
+    lines.push(`👤 ${r.driverName||"Sin conductor"}`);
+    lines.push(`👥 ${r.assistantName||"Sin ayudante"}`);
+    lines.push(`🚛 ${r.unit||"Sin unidad"}${r.plate?` · ${r.plate}`:""}`);
+    if(includeAmounts)lines.push(`💰 ${money(r.amount)}`);
+    if(index<plan.routes.length-1)lines.push("──────────────","");
+  });
+  lines.push("","Generado por RouteMaster");return lines.join("\n")
+}
+async function copyText(text){
+  if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text);return}
+  const area=document.createElement("textarea");area.value=text;area.style.position="fixed";area.style.opacity="0";document.body.appendChild(area);area.select();document.execCommand("copy");area.remove()
+}

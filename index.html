@@ -6,20 +6,21 @@
   <meta name="theme-color" content="#17362c" />
   <title>RouteMaster</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png" />
+  <link rel="apple-touch-icon" href="icono-192.png" />
+  <link rel="stylesheet" href="./style.css?v=0.9.2" />
 </head>
 <body>
   <div id="splash" class="splash">
-    <div class="brand-mark"><span></span><span></span><span></span></div>
+    <img class="splash-logo" src="logo.svg" alt="RouteMaster" />
     <h1>RouteMaster</h1>
-    <p>La mejor ruta comienza con una buena planificación.</p>
     <div class="loading-bar"><i></i></div>
   </div>
 
   <div id="app" class="app hidden">
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
-        <div class="mini-mark"><span></span><span></span><span></span></div>
+        <img class="sidebar-logo" src="logo.svg" alt="" />
         <div><strong>RouteMaster</strong><small>Logística de rutas</small></div>
       </div>
       <nav class="main-nav">
@@ -29,7 +30,7 @@
         <button class="nav-item" data-view="history"><span>↺</span> Historial</button>
         <button class="nav-item" data-view="settings"><span>⚙</span> Configuración</button>
       </nav>
-      <div class="sidebar-footer"><span>RouteMaster</span><small>v0.5.1</small></div>
+      <div class="sidebar-footer"><span>RouteMaster</span><small>v0.9.2</small></div>
     </aside>
 
     <main class="main">
@@ -40,14 +41,9 @@
       </header>
 
       <section id="today" class="view active-view">
-        <div class="summary-grid">
-          <article class="summary-card"><span class="summary-icon">🚚</span><div><strong id="todayRoutesCount">0</strong><small>Rutas hoy</small></div></article>
-          <article class="summary-card"><span class="summary-icon">⏳</span><div><strong id="activeRoutesCount">0</strong><small>En desarrollo</small></div></article>
-          <article class="summary-card"><span class="summary-icon">📅</span><div><strong id="tomorrowRoutesCount">0</strong><small>Planificadas mañana</small></div></article>
-        </div>
-
-        <div class="section-heading">
-          <div><h3>Operación actual</h3><p>Consulta quién salió, con quién y en qué unidad.</p></div>
+        <div class="today-toolbar">
+          <div class="today-count"><span>🚚</span><strong id="todayRoutesCount">0</strong><small>rutas programadas hoy</small></div>
+          <button id="shareTodayButton" class="secondary-button share-button">📤 Compartir</button>
         </div>
 
         <div class="search-box"><span>⌕</span><input id="todaySearch" type="search" placeholder="Buscar ruta, conductor, ayudante, unidad o placa..." /></div>
@@ -80,6 +76,7 @@
 
         <div id="plannerActions" class="planner-actions hidden">
           <button id="optimizeButton" class="primary-button big-button">⚙ Optimizar distribución</button>
+          <button id="sharePlanButton" class="secondary-button">📤 Compartir</button>
           <button id="saveDraftButton" class="secondary-button">Guardar borrador</button>
           <button id="confirmPlanButton" class="success-button">Confirmar planificación</button>
         </div>
@@ -143,10 +140,10 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="js/storage.js"></script>
-  <script src="js/app.js"></script>
+  <script src="./storage.js?v=0.9.2"></script>
+  <script src="./app.js?v=0.9.2"></script>
   <script>
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js");
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" });
   </script>
 </body>
 </html>

@@ -1,0 +1,18 @@
+ROUTEMASTER v0.9.2 - PAQUETE PARA VERCEL
+
+Sube EL CONTENIDO de esta carpeta como raíz del proyecto.
+Todos los archivos deben quedar al mismo nivel:
+
+index.html
+style.css
+app.js
+storage.js
+service-worker.js
+manifest.json
+logo.svg
+icono-192.png
+icono-512.png
+vercel.json
+
+No crees carpetas css o js para esta versión.
+La clave localStorage se mantiene como routemaster_v0_5_0.

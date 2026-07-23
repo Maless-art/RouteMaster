@@ -1,0 +1,19 @@
+RouteMaster v0.9.1
+- Simplificada la pantalla Hoy.
+- Eliminadas las tarjetas En desarrollo y Planificadas mañana.
+- Eliminado el bloque Operación actual.
+- La vista Hoy muestra únicamente ruta, conductor, ayudante, unidad y placa.
+- Compartir queda junto al contador y buscador.
+- Se conserva la misma estructura y clave de localStorage.
+
+RouteMaster v0.9.0
+
+- Nuevo logo integrado en pantalla de carga, menú e instalación PWA.
+- Iconos PWA regenerados en 192 x 192 y 512 x 512.
+- Botón Compartir en Rutas de hoy y en el Planificador.
+- Compartir mediante Web Share (incluye WhatsApp cuando el dispositivo lo ofrece).
+- Alternativa para copiar la planificación al portapapeles.
+- Opción para incluir o excluir los montos del mensaje compartido.
+- Respaldo JSON e importación conservados en Configuración.
+- Limpieza visual del splash y actualización de caché PWA.
+- Se conserva la clave de localStorage routemaster_v0_5_0 para no perder recursos ni planificaciones existentes.

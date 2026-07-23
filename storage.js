@@ -3,7 +3,7 @@ const STORAGE_KEY = "routemaster_v0_5_0";
 const LEGACY_KEYS = ["routemaster_v0_1_0"];
 
 const defaultData = {
-  version: "0.5.0",
+  version: "0.9.0",
   drivers: [],
   assistants: [],
   vehicles: [],
