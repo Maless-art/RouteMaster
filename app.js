@@ -571,7 +571,7 @@ function buildShareText(plan,includeAmounts=false){
     if(includeAmounts)lines.push(`💰 ${money(r.amount)}`);
     if(index<plan.routes.length-1)lines.push("──────────────","");
   });
-  lines.push("","Generado por RouteMaster");return lines.join("\n")
+  lines.push("","No cambiar sin notificar");return lines.join("\n")
 }
 async function copyText(text){
   if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text);return}
