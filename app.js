@@ -173,8 +173,15 @@ function deleteResource(type,id){if(!confirm("¿Eliminar este registro?"))return
 function loadPlanForDate(){
   const date=qs("#planDate").value||tomorrowISO();
   const existing=getPlan(date);
-  currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[],options:{teamMode:"official-first"}};
-  currentPlan.options={teamMode:"official-first",...(currentPlan.options||{})};
+  currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[],options:{teamMode:"official-only"}};
+  currentPlan.options={teamMode:"official-only",...(currentPlan.options||{})};
+  // Migración silenciosa de valores anteriores del selector.
+  const legacyTeamModes={
+    "official-first":"flexible",
+    "drivers-first":"flexible",
+    "assistants-only":"official-eventual"
+  };
+  currentPlan.options.teamMode=legacyTeamModes[currentPlan.options.teamMode]||currentPlan.options.teamMode;
   plannerDirty=false;
   qs("#teamMode").value=currentPlan.options.teamMode;
   renderPlanner();
@@ -264,13 +271,15 @@ function assistantOptions(route){
 function vehicleOptions(selected){return `<option value="">Sin asignar</option>`+state.vehicles.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${String(x.id)===String(selected)?"selected":""}>${escapeHtml(x.unit)} · ${escapeHtml(x.plate)}</option>`).join("")}
 function manualAssign(kind,routeId,id){
   const r=currentPlan.routes.find(x=>x.id===routeId);
+  if(!r)return;
+  r.manualOverrides={...(r.manualOverrides||{})};
   const usedByOtherRoute=name=>currentPlan.routes.some(other=>other.id!==routeId&&(normalizePersonName(other.driverName)===normalizePersonName(name)||normalizePersonName(other.assistantName)===normalizePersonName(name)));
   if(kind==="driver"){
     const p=state.drivers.find(x=>String(x.id)===String(id));
     if(p&&normalizePersonName(p.name)===normalizePersonName(r.assistantName)){toast("Una persona no puede ser conductor y ayudante en la misma ruta");return}
     if(p&&usedByOtherRoute(p.name)){toast("Esta persona ya está asignada en otra ruta");return}
     if(p&&!driverAllowed(p,r,true))toast("Advertencia: esta asignación supera el perfil automático del conductor");
-    r.driverId=id;r.driverName=p?.name||"";
+    r.driverId=id;r.driverName=p?.name||"";r.manualOverrides.driver=true;
   }
   if(kind==="assistant"){
     const [source,rawId]=String(id||"").split(":");
@@ -278,9 +287,9 @@ function manualAssign(kind,routeId,id){
     const p=(pool||[]).find(x=>String(x.id)===String(rawId));
     if(p&&normalizePersonName(p.name)===normalizePersonName(r.driverName)){toast("Una persona no puede ser conductor y ayudante en la misma ruta");return}
     if(p&&usedByOtherRoute(p.name)){toast("Esta persona ya está asignada en otra ruta");return}
-    r.assistantSource=source||"assistant";r.assistantId=rawId||"";r.assistantName=p?.name||"";
+    r.assistantSource=source||"assistant";r.assistantId=rawId||"";r.assistantName=p?.name||"";r.manualOverrides.assistant=true;
   }
-  if(kind==="vehicle"){const v=state.vehicles.find(x=>String(x.id)===String(id));r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||""}
+  if(kind==="vehicle"){const v=state.vehicles.find(x=>String(x.id)===String(id));r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||"";r.manualOverrides.vehicle=true}
   plannerDirty=true;renderPlanner();
 }
 function openRoutePicker(){
@@ -311,9 +320,13 @@ function optimizeDistribution(){
       showPlannerDiagnostic(message,"error");toast(message);return false;
     }
 
-    const teamMode=currentPlan.options?.teamMode||"official-first";
-    const possibleAssistants=teamMode==="assistants-only"?officialAssistants.length+eventualAssistants.length:
-      new Set([...officialAssistants,...eventualAssistants,...dualRoleDrivers].map(p=>normalizePersonName(p.name))).size;
+    const teamMode=currentPlan.options?.teamMode||"official-only";
+    const possibleAssistants=
+      teamMode==="official-only"
+        ? officialAssistants.length
+        : teamMode==="official-eventual"
+          ? officialAssistants.length+eventualAssistants.length
+          : new Set([...officialAssistants,...eventualAssistants,...dualRoleDrivers].map(p=>normalizePersonName(p.name))).size;
     if(possibleAssistants<routeCount){
       const message=`No hay suficientes personas habilitadas como ayudantes para ${routeCount} ruta(s).`;
       showPlannerDiagnostic(message,"error");toast(message);return false;
@@ -358,11 +371,12 @@ function optimizeDistribution(){
     // Etapa 2: construir el orden de candidatos para ayudantes según el modo elegido.
     const buildAssistantCandidates=()=>{
       const official=officialAssistants.map(a=>({source:"assistant",id:String(a.id),name:a.name,type:"official"}));
-      const dual=dualRoleDrivers.map(d=>({source:"driver",id:String(d.id),name:d.name,type:"driver"}));
       const eventual=eventualAssistants.map(a=>({source:"assistant",id:String(a.id),name:a.name,type:"eventual"}));
-      if(teamMode==="drivers-first")return [...dual,...official,...eventual];
-      if(teamMode==="assistants-only")return [...official,...eventual];
-      return [...official,...dual,...eventual];
+      const dual=dualRoleDrivers.map(d=>({source:"driver",id:String(d.id),name:d.name,type:"driver"}));
+
+      if(teamMode==="official-only")return official;
+      if(teamMode==="official-eventual")return [...official,...eventual];
+      return [...official,...eventual,...dual];
     };
     const assistantPool=buildAssistantCandidates();
     const usedAssistantRefs=new Set();
@@ -374,8 +388,7 @@ function optimizeDistribution(){
         .filter(a=>!usedPersonNames.has(normalizePersonName(a.name)))
         .sort((a,b)=>{
           const score=x=>{
-            let value=x.type==="official"?0:x.type==="driver"?1000:2000;
-            if(teamMode==="drivers-first")value=x.type==="driver"?0:x.type==="official"?1000:2000;
+            let value=x.type==="official"?0:x.type==="eventual"?1000:2000;
             if(priorPartners.has(normalizePersonName(x.name)))value+=10000;
             value+=assistantWorkloadByName(x.name,history);
             return value;
@@ -467,7 +480,14 @@ function driverAllowed(driver,route,manual){
 
 function persistCurrentPlan(status="Borrador",immediate=false){
   currentPlan.status=status;
-  currentPlan.options={teamMode:"official-first",...(currentPlan.options||{})};
+  currentPlan.options={teamMode:"official-only",...(currentPlan.options||{})};
+  // Migración silenciosa de valores anteriores del selector.
+  const legacyTeamModes={
+    "official-first":"flexible",
+    "drivers-first":"flexible",
+    "assistants-only":"official-eventual"
+  };
+  currentPlan.options.teamMode=legacyTeamModes[currentPlan.options.teamMode]||currentPlan.options.teamMode;
   currentPlan.routes.forEach(r=>r.difficulty=difficulty(r.amount));
   const copy=JSON.parse(JSON.stringify(currentPlan));
   const idx=state.plans.findIndex(p=>p.date===currentPlan.date);
@@ -478,13 +498,19 @@ function persistCurrentPlan(status="Borrador",immediate=false){
   plannerDirty=!!qs("#planner")?.classList.contains("active-view");
 }
 function savePlan(status){
-  if(currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId)){
-    const generated=optimizeDistribution();
-    if(!generated)return;
+  const incomplete=currentPlan.routes.filter(r=>!r.driverId||!r.assistantId||!r.vehicleId);
+  if(incomplete.length){
+    const names=incomplete.map(r=>r.routeName).filter(Boolean).join(", ");
+    const message=`Hay ${incomplete.length} ruta(s) con asignaciones incompletas${names?`: ${names}`:""}. Pulsa Generar distribución o complétalas manualmente.`;
+    showPlannerDiagnostic(message,"error");
+    toast("Hay asignaciones incompletas");
+    return;
   }
+  // Confirmar nunca vuelve a ejecutar el optimizador: conserva exactamente
+  // los cambios manuales realizados después de generar la distribución.
   persistCurrentPlan(status,true);
   renderAll();
-  toast(status==="Programada"?"Planificación confirmada":"Borrador guardado");
+  toast(status==="Programada"?"Planificación confirmada con tus cambios":"Borrador guardado");
 }
 function editTodayAssignment(id){showView("planner");qs("#planDate").value=todayISO();loadPlanForDate();setTimeout(()=>document.querySelector(`[data-driver="${id}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}),100)}
 

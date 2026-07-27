@@ -3,7 +3,7 @@ const STORAGE_KEY = "routemaster_v0_5_0";
 const LEGACY_KEYS = ["routemaster_v0_1_0"];
 
 const defaultData = {
-  version: "1.0.6",
+  version: "1.0.8",
   drivers: [],
   assistants: [],
   vehicles: [],
@@ -45,7 +45,13 @@ window.RouteMasterStorage = {
         routeCatalog: parsed.routeCatalog || [],
         plans: (parsed.plans || []).map(plan => ({
           ...plan,
-          options: { teamMode: "official-first", ...(plan.options || {}) }
+          options: {
+            teamMode: ({
+              "official-first":"flexible",
+              "drivers-first":"flexible",
+              "assistants-only":"official-eventual"
+            })[plan.options?.teamMode] || plan.options?.teamMode || "official-only"
+          }
         })),
         settings: { ...defaultData.settings, ...(parsed.settings || {}) }
       };

@@ -30,7 +30,7 @@
         <button class="nav-item" data-view="history"><span>↺</span> Historial</button>
         <button class="nav-item" data-view="settings"><span>⚙</span> Configuración</button>
       </nav>
-      <div class="sidebar-footer"><span>RouteMaster</span><small>v1.0.5</small></div>
+      <div class="sidebar-footer"><span>RouteMaster</span><small>v1.0.8</small></div>
     </aside>
 
     <main class="main">
@@ -82,9 +82,9 @@
             <small>Define a quién debe priorizar RouteMaster como ayudante.</small>
           </div>
           <select id="teamMode">
-            <option value="official-first">Ayudantes oficiales primero</option>
-            <option value="drivers-first">Conductores habilitados primero</option>
-            <option value="assistants-only">Solo ayudantes (oficiales y eventuales)</option>
+            <option value="official-only">Solo oficiales</option>
+            <option value="official-eventual">Oficiales + eventuales</option>
+            <option value="flexible">Equipo flexible</option>
           </select>
         </div>
 
@@ -164,9 +164,9 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="./storage.js?v=1.0.6"></script>
-  <script src="./firebase.js?v=1.0.6"></script>
-  <script src="./app.js?v=1.0.6"></script>
+  <script src="./storage.js?v=1.0.7"></script>
+  <script src="./firebase.js?v=1.0.7"></script>
+  <script src="./app.js?v=1.0.7"></script>
   <script>
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" });
   </script>
