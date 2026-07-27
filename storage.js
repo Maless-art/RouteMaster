@@ -3,7 +3,7 @@ const STORAGE_KEY = "routemaster_v0_5_0";
 const LEGACY_KEYS = ["routemaster_v0_1_0"];
 
 const defaultData = {
-  version: "1.0.0",
+  version: "1.0.6",
   drivers: [],
   assistants: [],
   vehicles: [],
@@ -29,11 +29,24 @@ window.RouteMasterStorage = {
       const migrated = {
         ...clone(defaultData),
         ...parsed,
-        drivers: parsed.drivers || [],
-        assistants: parsed.assistants || [],
+        drivers: (parsed.drivers || []).map(driver => {
+          const legacy = driver.restriction || "none";
+          const maxRouteType = driver.maxRouteType || (
+            legacy === "short" ? "Corta" :
+            ["shortMedium", "avoidLong", "avoidLongHard"].includes(legacy) ? "Intermedia" : "Larga"
+          );
+          const maxDifficulty = driver.maxDifficulty || (
+            ["avoidHard", "avoidLongHard"].includes(legacy) ? "Normal" : "Difícil"
+          );
+          return { canAssist: false, ...driver, maxRouteType, maxDifficulty };
+        }),
+        assistants: (parsed.assistants || []).map(assistant => ({ employmentType: "official", ...assistant })),
         vehicles: parsed.vehicles || [],
         routeCatalog: parsed.routeCatalog || [],
-        plans: parsed.plans || [],
+        plans: (parsed.plans || []).map(plan => ({
+          ...plan,
+          options: { teamMode: "official-first", ...(plan.options || {}) }
+        })),
         settings: { ...defaultData.settings, ...(parsed.settings || {}) }
       };
       this.save(migrated);

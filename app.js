@@ -83,6 +83,11 @@ function bindGlobalButtons(){
   qs("#modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
   qs("#addRouteButton").addEventListener("click",openRoutePicker);
   qs("#planDate").addEventListener("change",loadPlanForDate);
+  qs("#teamMode").addEventListener("change",e=>{
+    if(!currentPlan)return;
+    currentPlan.options={...(currentPlan.options||{}),teamMode:e.target.value};
+    plannerDirty=true;
+  });
   qs("#optimizeButton").addEventListener("click",event=>{event.preventDefault();optimizeDistribution()});
   qs("#shareTodayButton").addEventListener("click",()=>openShareDialog(getPlan(todayISO())));
   qs("#sharePlanButton").addEventListener("click",()=>openShareDialog(currentPlan));
@@ -131,8 +136,11 @@ function renderResourceList(){
   qsa("[data-delete]").forEach(b=>b.addEventListener("click",()=>deleteResource(activeResource,b.dataset.delete)));
 }
 function resourceDescription(type,i){
-  if(type==="drivers")return `${i.active!==false?"Activo":"Inactivo"} · ${restrictionLabel(i.restriction)}${i.preferredVehicleId?" · vehículo habitual asignado":""}`;
-  if(type==="assistants")return i.active!==false?"Activo":"Inactivo";
+  if(type==="drivers"){
+    const assist=i.canAssist?" · puede apoyar como ayudante":"";
+    return `${i.active!==false?"Activo":"Inactivo"} · hasta ruta ${String(i.maxRouteType||"Larga").toLowerCase()} · dificultad ${String(i.maxDifficulty||"Difícil").toLowerCase()}${assist}${i.preferredVehicleId?" · vehículo habitual asignado":""}`;
+  }
+  if(type==="assistants")return `${i.active!==false?"Activo":"Inactivo"} · ${i.employmentType==="eventual"?"Eventual":"Oficial"}`;
   if(type==="vehicles")return `${i.plate||"Sin placa"} · ${i.active!==false?"Disponible":"Fuera de servicio"}`;
   return `${i.type} · ${i.km} km · ${i.hours} h`;
 }
@@ -144,10 +152,12 @@ function openResourceForm(type,id=null){
   if(type==="drivers") html+=`
     ${fg("Nombre","name","text",item?.name,true)}
     ${selectFg("Estado","active",[{v:"true",t:"Activo"},{v:"false",t:"Inactivo"}],String(item?.active!==false))}
-    ${selectFg("Perfil operativo","restriction",[{v:"none",t:"Sin restricciones"},{v:"short",t:"Priorizar rutas cortas"},{v:"shortMedium",t:"Priorizar cortas e intermedias"},{v:"avoidLong",t:"Evitar rutas largas"},{v:"avoidHard",t:"Evitar rutas difíciles"},{v:"avoidLongHard",t:"Evitar largas y difíciles"}],item?.restriction||"none")}
+    ${selectFg("Longitud máxima automática","maxRouteType",[{v:"Corta",t:"Solo rutas cortas"},{v:"Intermedia",t:"Hasta rutas intermedias"},{v:"Larga",t:"Puede cubrir rutas largas"}],item?.maxRouteType||"Larga")}
+    ${selectFg("Dificultad máxima automática","maxDifficulty",[{v:"Sencilla",t:"Solo dificultad sencilla"},{v:"Normal",t:"Hasta dificultad normal"},{v:"Difícil",t:"Puede cubrir dificultad difícil"}],item?.maxDifficulty||"Difícil")}
+    ${selectFg("Puede trabajar como ayudante","canAssist",[{v:"false",t:"No"},{v:"true",t:"Sí"}],String(item?.canAssist===true))}
     ${selectFg("Vehículo habitual","preferredVehicleId",[{v:"",t:"Sin vehículo habitual"},...state.vehicles.map(v=>({v:v.id,t:`${v.unit} · ${v.plate}`}))],item?.preferredVehicleId||"")}
     ${textAreaFg("Observación operativa","notes",item?.notes||"")}`;
-  if(type==="assistants") html+=`${fg("Nombre","name","text",item?.name,true)}${selectFg("Estado","active",[{v:"true",t:"Activo"},{v:"false",t:"Inactivo"}],String(item?.active!==false))}`;
+  if(type==="assistants") html+=`${fg("Nombre","name","text",item?.name,true)}${selectFg("Estado","active",[{v:"true",t:"Activo"},{v:"false",t:"Inactivo"}],String(item?.active!==false))}${selectFg("Tipo de personal","employmentType",[{v:"official",t:"Oficial"},{v:"eventual",t:"Eventual"}],item?.employmentType||"official")}`;
   if(type==="vehicles") html+=`${fg("Unidad","unit","text",item?.unit,true)}${fg("Placa","plate","text",item?.plate,true)}${selectFg("Estado","active",[{v:"true",t:"Disponible"},{v:"false",t:"Fuera de servicio"}],String(item?.active!==false))}${textAreaFg("Observaciones","notes",item?.notes||"")}`;
   if(type==="routes") html+=`${fg("Nombre de la ruta","name","text",item?.name,true)}${selectFg("Tipo","type",[{v:"Corta",t:"Corta"},{v:"Intermedia",t:"Intermedia"},{v:"Larga",t:"Larga"}],item?.type||"Corta")}${fg("Kilómetros","km","number",item?.km,true)}${fg("Horas estimadas","hours","number",item?.hours,true,"0.5")}${textAreaFg("Observaciones","notes",item?.notes||"")}`;
   html+=`</div><div class="form-actions"><button type="button" class="secondary-button" id="cancelFormButton">Cancelar</button><button class="primary-button">Guardar</button></div></form></div>`;
@@ -156,12 +166,18 @@ function openResourceForm(type,id=null){
 function fg(label,name,type,value="",required=false,step=""){return `<div class="form-group"><label>${label}</label><input name="${name}" type="${type}" value="${escapeHtml(value??"")}" ${required?"required":""} ${step?`step="${step}"`:""}></div>`}
 function selectFg(label,name,opts,value){return `<div class="form-group"><label>${label}</label><select name="${name}">${opts.map(o=>`<option value="${escapeHtml(o.v)}" ${String(o.v)===String(value)?"selected":""}>${escapeHtml(o.t)}</option>`).join("")}</select></div>`}
 function textAreaFg(label,name,value){return `<div class="form-group full"><label>${label}</label><textarea name="${name}" rows="3">${escapeHtml(value)}</textarea></div>`}
-function saveResource(e,type,id){e.preventDefault();const f=new FormData(e.target),obj=Object.fromEntries(f.entries());obj.active=obj.active!=="false";if(type==="routes"){obj.km=Number(obj.km);obj.hours=Number(obj.hours)}
+function saveResource(e,type,id){e.preventDefault();const f=new FormData(e.target),obj=Object.fromEntries(f.entries());obj.active=obj.active!=="false";if(type==="drivers")obj.canAssist=obj.canAssist==="true";if(type==="routes"){obj.km=Number(obj.km);obj.hours=Number(obj.hours)}
   const col=getCollection(type);if(id){Object.assign(col.find(x=>x.id===id),obj)}else col.push({id:uid(),...obj});save();closeModal();toast("Registro guardado")}
 function deleteResource(type,id){if(!confirm("¿Eliminar este registro?"))return;const col=getCollection(type),idx=col.findIndex(x=>x.id===id);if(idx>=0)col.splice(idx,1);save();toast("Registro eliminado")}
 
 function loadPlanForDate(){
-  const date=qs("#planDate").value||tomorrowISO();const existing=getPlan(date);currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[]};plannerDirty=false;renderPlanner()
+  const date=qs("#planDate").value||tomorrowISO();
+  const existing=getPlan(date);
+  currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[],options:{teamMode:"official-first"}};
+  currentPlan.options={teamMode:"official-first",...(currentPlan.options||{})};
+  plannerDirty=false;
+  qs("#teamMode").value=currentPlan.options.teamMode;
+  renderPlanner();
 }
 function renderPlanner(){
   if(!currentPlan)return;
@@ -192,14 +208,14 @@ function renderPlanner(){
 
       <div class="assignment-grid">
         <div class="form-group"><label>Conductor</label><select data-driver="${r.id}">${personOptions(state.drivers,r.driverId,"Sin asignar")}</select></div>
-        <div class="form-group"><label>Ayudante</label><select data-assistant="${r.id}">${personOptions(state.assistants,r.assistantId,"Sin asignar")}</select></div>
+        <div class="form-group"><label>Ayudante</label><select data-assistant="${r.id}">${assistantOptions(r)}</select></div>
         <div class="form-group"><label>Vehículo</label><select data-vehicle="${r.id}">${vehicleOptions(r.vehicleId)}</select></div>
       </div>
     </div>`;
     list.appendChild(el);
 
     el.querySelector(`[data-driver="${r.id}"]`).value=r.driverId||"";
-    el.querySelector(`[data-assistant="${r.id}"]`).value=r.assistantId||"";
+    el.querySelector(`[data-assistant="${r.id}"]`).value=r.assistantId?`${r.assistantSource||"assistant"}:${r.assistantId}`:"";
     el.querySelector(`[data-vehicle="${r.id}"]`).value=r.vehicleId||"";
   });
 
@@ -237,29 +253,69 @@ function difficultyDot(amount){
   return {className:"dot-simple",label:"Ruta sencilla"};
 }
 function personOptions(list,selected,empty){return `<option value="">${empty}</option>`+list.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${String(x.id)===String(selected)?"selected":""}>${escapeHtml(x.name)}</option>`).join("")}
+function assistantOptions(route){
+  const selected=route.assistantSource?`${route.assistantSource}:${route.assistantId}`:(route.assistantId?`assistant:${route.assistantId}`:"");
+  const official=(state.assistants||[]).filter(isAvailableResource).filter(a=>(a.employmentType||"official")==="official");
+  const eventual=(state.assistants||[]).filter(isAvailableResource).filter(a=>a.employmentType==="eventual");
+  const dual=(state.drivers||[]).filter(isAvailableResource).filter(d=>d.canAssist===true);
+  const group=(label,items,source)=>items.length?`<optgroup label="${label}">${items.map(x=>{const value=`${source}:${x.id}`;return `<option value="${value}" ${value===selected?"selected":""}>${escapeHtml(x.name)}</option>`}).join("")}</optgroup>`:"";
+  return `<option value="">Sin asignar</option>`+group("Ayudantes oficiales",official,"assistant")+group("Conductores habilitados",dual,"driver")+group("Ayudantes eventuales",eventual,"assistant");
+}
 function vehicleOptions(selected){return `<option value="">Sin asignar</option>`+state.vehicles.filter(x=>x.active!==false).map(x=>`<option value="${x.id}" ${String(x.id)===String(selected)?"selected":""}>${escapeHtml(x.unit)} · ${escapeHtml(x.plate)}</option>`).join("")}
-function manualAssign(kind,routeId,id){const r=currentPlan.routes.find(x=>x.id===routeId);if(kind==="driver"){const p=state.drivers.find(x=>x.id===id);if(p&&!driverAllowed(p,r,true))toast("Advertencia: esta asignación no coincide con su perfil operativo");r.driverId=id;r.driverName=p?.name||""}
-  if(kind==="assistant"){const p=state.assistants.find(x=>x.id===id);r.assistantId=id;r.assistantName=p?.name||""}
-  if(kind==="vehicle"){const v=state.vehicles.find(x=>x.id===id);r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||""}plannerDirty=true;renderPlanner()}
+function manualAssign(kind,routeId,id){
+  const r=currentPlan.routes.find(x=>x.id===routeId);
+  const usedByOtherRoute=name=>currentPlan.routes.some(other=>other.id!==routeId&&(normalizePersonName(other.driverName)===normalizePersonName(name)||normalizePersonName(other.assistantName)===normalizePersonName(name)));
+  if(kind==="driver"){
+    const p=state.drivers.find(x=>String(x.id)===String(id));
+    if(p&&normalizePersonName(p.name)===normalizePersonName(r.assistantName)){toast("Una persona no puede ser conductor y ayudante en la misma ruta");return}
+    if(p&&usedByOtherRoute(p.name)){toast("Esta persona ya está asignada en otra ruta");return}
+    if(p&&!driverAllowed(p,r,true))toast("Advertencia: esta asignación supera el perfil automático del conductor");
+    r.driverId=id;r.driverName=p?.name||"";
+  }
+  if(kind==="assistant"){
+    const [source,rawId]=String(id||"").split(":");
+    const pool=source==="driver"?state.drivers:state.assistants;
+    const p=(pool||[]).find(x=>String(x.id)===String(rawId));
+    if(p&&normalizePersonName(p.name)===normalizePersonName(r.driverName)){toast("Una persona no puede ser conductor y ayudante en la misma ruta");return}
+    if(p&&usedByOtherRoute(p.name)){toast("Esta persona ya está asignada en otra ruta");return}
+    r.assistantSource=source||"assistant";r.assistantId=rawId||"";r.assistantName=p?.name||"";
+  }
+  if(kind==="vehicle"){const v=state.vehicles.find(x=>String(x.id)===String(id));r.vehicleId=id;r.unit=v?.unit||"";r.plate=v?.plate||""}
+  plannerDirty=true;renderPlanner();
+}
 function openRoutePicker(){
   if(!state.routeCatalog.length){toast("Primero crea rutas en Recursos");showView("resources");openResource("routes");return}
   qs("#modalTitle").textContent="Agregar rutas";qs("#modalBody").innerHTML=`<div class="modal-body-inner"><div class="checkbox-list">${state.routeCatalog.map(r=>`<div class="checkbox-item"><label><input type="checkbox" value="${r.id}" ${currentPlan.routes.some(x=>x.routeId===r.id)?"disabled":""}><span><strong>${escapeHtml(r.name)}</strong><br><small>${r.type} · ${r.km} km · ${r.hours} h</small></span></label></div>`).join("")}</div><div class="form-actions"><button id="cancelPicker" class="secondary-button">Cancelar</button><button id="addSelectedRoutes" class="primary-button">Agregar seleccionadas</button></div></div>`;
   openModal();qs("#cancelPicker").onclick=closeModal;qs("#addSelectedRoutes").onclick=()=>{qsa('#modalBody input[type="checkbox"]:checked').forEach(c=>{const rt=state.routeCatalog.find(r=>r.id===c.value);currentPlan.routes.push({id:uid(),routeId:rt.id,routeName:rt.name,routeType:rt.type,km:rt.km,hours:rt.hours,amount:0,difficulty:"Sencilla",status:"Pendiente",driverId:"",driverName:"",assistantId:"",assistantName:"",vehicleId:"",unit:"",plate:""})});plannerDirty=true;closeModal();renderPlanner()}
 }
 
+function isAvailableResource(item){return item && item.active!==false && String(item.active).toLowerCase()!=="false"}
+function normalizePersonName(name){return String(name||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ")}
+function routeTypeRank(type){return {Corta:1,Intermedia:2,Larga:3}[type]||3}
+function difficultyRank(level){return {Sencilla:1,Normal:2,Difícil:3}[level]||3}
+function assistantHistoryKey(route){return normalizePersonName(route.assistantName)||`${route.assistantSource||"assistant"}:${route.assistantId||""}`}
+
 function optimizeDistribution(){
   try{
     if(!currentPlan?.routes?.length){toast("Agrega al menos una ruta");return false}
 
-    // Acepta datos antiguos, datos locales y datos recibidos desde Firebase.
-    const isAvailable=item=>item && item.active!==false && String(item.active).toLowerCase()!=="false";
-    const drivers=(state.drivers||[]).filter(isAvailable);
-    const assistants=(state.assistants||[]).filter(isAvailable);
-    const vehicles=(state.vehicles||[]).filter(isAvailable);
+    const drivers=(state.drivers||[]).filter(isAvailableResource);
+    const officialAssistants=(state.assistants||[]).filter(isAvailableResource).filter(a=>(a.employmentType||"official")==="official");
+    const eventualAssistants=(state.assistants||[]).filter(isAvailableResource).filter(a=>a.employmentType==="eventual");
+    const dualRoleDrivers=drivers.filter(d=>d.canAssist===true);
+    const vehicles=(state.vehicles||[]).filter(isAvailableResource);
     const routeCount=currentPlan.routes.length;
 
-    if(drivers.length<routeCount || assistants.length<routeCount || vehicles.length<routeCount){
-      const message=`No hay recursos suficientes. Rutas: ${routeCount}; conductores: ${drivers.length}; ayudantes: ${assistants.length}; vehículos: ${vehicles.length}.`;
+    if(drivers.length<routeCount || vehicles.length<routeCount){
+      const message=`No hay recursos suficientes. Rutas: ${routeCount}; conductores: ${drivers.length}; vehículos: ${vehicles.length}.`;
+      showPlannerDiagnostic(message,"error");toast(message);return false;
+    }
+
+    const teamMode=currentPlan.options?.teamMode||"official-first";
+    const possibleAssistants=teamMode==="assistants-only"?officialAssistants.length+eventualAssistants.length:
+      new Set([...officialAssistants,...eventualAssistants,...dualRoleDrivers].map(p=>normalizePersonName(p.name))).size;
+    if(possibleAssistants<routeCount){
+      const message=`No hay suficientes personas habilitadas como ayudantes para ${routeCount} ruta(s).`;
       showPlannerDiagnostic(message,"error");toast(message);return false;
     }
 
@@ -268,69 +324,88 @@ function optimizeDistribution(){
       .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
 
     const driverLoad=Object.fromEntries(drivers.map(d=>[String(d.id),workload(d.id,"driver",history)]));
-    const assistantLoad=Object.fromEntries(assistants.map(a=>[String(a.id),workload(a.id,"assistant",history)]));
     const lastDriverRoute=Object.fromEntries(drivers.map(d=>[String(d.id),lastAssignment(d.id,"driver",history)]));
-    const lastAssistantRoute=Object.fromEntries(assistants.map(a=>[String(a.id),lastAssignment(a.id,"assistant",history)]));
-
     const ordered=[...currentPlan.routes].sort((a,b)=>routeWeight(b)-routeWeight(a));
-    const usedDrivers=new Set(),usedAssistants=new Set(),usedVehicles=new Set();
+    const usedDriverIds=new Set();
+    const usedPersonNames=new Set();
 
-    ordered.forEach((route,index)=>{
+    // Etapa 1: asignar todos los conductores. La longitud y la dificultad se validan por separado.
+    for(const route of ordered){
       route.difficulty=difficulty(route.amount);
-
-      let availableDrivers=drivers.filter(d=>!usedDrivers.has(String(d.id)));
-      let candidates=availableDrivers.filter(d=>driverAllowed(d,route,false));
-      if(!candidates.length)candidates=availableDrivers;
-      candidates.sort((a,b)=>{
-        const score=d=>{
-          let value=driverLoad[String(d.id)]||0;
-          const last=lastDriverRoute[String(d.id)];
-          if(last&&route.routeType==="Larga"&&last.routeType==="Larga")value+=10000;
-          if(last&&difficulty(route.amount)==="Difícil"&&last.difficulty==="Difícil")value+=2000;
-          if(!driverAllowed(d,route,false))value+=50000;
-          return value;
-        };
-        return score(a)-score(b);
-      });
-      const driver=candidates[0]||availableDrivers[0]||drivers[index];
-
-      let availableAssistants=assistants.filter(a=>!usedAssistants.has(String(a.id)));
-      const priorPartners=recentPartners(driver.id,history);
-      availableAssistants.sort((a,b)=>{
-        const score=x=>(assistantLoad[String(x.id)]||0)+(priorPartners.has(String(x.id))?10000:0)+((lastAssistantRoute[String(x.id)]?.routeType==="Larga"&&route.routeType==="Larga")?2000:0);
-        return score(a)-score(b);
-      });
-      const assistant=availableAssistants[0]||assistants[index];
-
-      const preferred=vehicles.find(v=>String(v.id)===String(driver.preferredVehicleId)&&!usedVehicles.has(String(v.id)));
-      const vehicle=preferred||vehicles.find(v=>!usedVehicles.has(String(v.id)))||vehicles[index];
-
-      if(!driver||!assistant||!vehicle)throw new Error(`No se pudo completar la ruta ${route.routeName||index+1}`);
-
-      usedDrivers.add(String(driver.id));usedAssistants.add(String(assistant.id));usedVehicles.add(String(vehicle.id));
+      const candidates=drivers
+        .filter(d=>!usedDriverIds.has(String(d.id)))
+        .filter(d=>!usedPersonNames.has(normalizePersonName(d.name)))
+        .filter(d=>driverAllowed(d,route,false))
+        .sort((a,b)=>{
+          const score=d=>{
+            let value=driverLoad[String(d.id)]||0;
+            const last=lastDriverRoute[String(d.id)];
+            if(last&&route.routeType==="Larga"&&last.routeType==="Larga")value+=10000;
+            if(last&&route.difficulty==="Difícil"&&last.difficulty==="Difícil")value+=5000;
+            return value;
+          };
+          return score(a)-score(b);
+        });
+      const driver=candidates[0];
+      if(!driver){
+        throw new Error(`No hay conductor compatible para ${route.routeName}: ${route.routeType.toLowerCase()} y dificultad ${route.difficulty.toLowerCase()}`);
+      }
+      usedDriverIds.add(String(driver.id));
+      usedPersonNames.add(normalizePersonName(driver.name));
       route.driverId=String(driver.id);route.driverName=driver.name||"";
-      route.assistantId=String(assistant.id);route.assistantName=assistant.name||"";
-      route.vehicleId=String(vehicle.id);route.unit=vehicle.unit||"";route.plate=vehicle.plate||"";
-    });
+    }
+
+    // Etapa 2: construir el orden de candidatos para ayudantes según el modo elegido.
+    const buildAssistantCandidates=()=>{
+      const official=officialAssistants.map(a=>({source:"assistant",id:String(a.id),name:a.name,type:"official"}));
+      const dual=dualRoleDrivers.map(d=>({source:"driver",id:String(d.id),name:d.name,type:"driver"}));
+      const eventual=eventualAssistants.map(a=>({source:"assistant",id:String(a.id),name:a.name,type:"eventual"}));
+      if(teamMode==="drivers-first")return [...dual,...official,...eventual];
+      if(teamMode==="assistants-only")return [...official,...eventual];
+      return [...official,...dual,...eventual];
+    };
+    const assistantPool=buildAssistantCandidates();
+    const usedAssistantRefs=new Set();
+
+    for(const route of ordered){
+      const priorPartners=recentPartnerNames(route.driverId,history);
+      const candidates=assistantPool
+        .filter(a=>!usedAssistantRefs.has(`${a.source}:${a.id}`))
+        .filter(a=>!usedPersonNames.has(normalizePersonName(a.name)))
+        .sort((a,b)=>{
+          const score=x=>{
+            let value=x.type==="official"?0:x.type==="driver"?1000:2000;
+            if(teamMode==="drivers-first")value=x.type==="driver"?0:x.type==="official"?1000:2000;
+            if(priorPartners.has(normalizePersonName(x.name)))value+=10000;
+            value+=assistantWorkloadByName(x.name,history);
+            return value;
+          };
+          return score(a)-score(b);
+        });
+      const assistant=candidates[0];
+      if(!assistant)throw new Error(`No hay ayudante disponible para ${route.routeName} sin repetir personas`);
+      usedAssistantRefs.add(`${assistant.source}:${assistant.id}`);
+      usedPersonNames.add(normalizePersonName(assistant.name));
+      route.assistantSource=assistant.source;route.assistantId=assistant.id;route.assistantName=assistant.name||"";
+    }
+
+    // Etapa 3: vehículos, priorizando el habitual de cada conductor.
+    const usedVehicles=new Set();
+    for(const [index,route] of ordered.entries()){
+      const driver=drivers.find(d=>String(d.id)===String(route.driverId));
+      const preferred=vehicles.find(v=>String(v.id)===String(driver?.preferredVehicleId)&&!usedVehicles.has(String(v.id)));
+      const vehicle=preferred||vehicles.find(v=>!usedVehicles.has(String(v.id)))||vehicles[index];
+      if(!vehicle)throw new Error(`No hay vehículo disponible para ${route.routeName}`);
+      usedVehicles.add(String(vehicle.id));route.vehicleId=String(vehicle.id);route.unit=vehicle.unit||"";route.plate=vehicle.plate||"";
+    }
 
     currentPlan.routes=ordered;
     plannerDirty=true;
-
-    // Primero pinta los resultados; luego guarda. Así nada puede devolver visualmente
-    // los selectores a “Sin asignar” durante esta misma acción.
     renderPlanner();
-    currentPlan.routes.forEach(route=>{
-      const d=document.querySelector(`[data-driver="${CSS.escape(String(route.id))}"]`);
-      const a=document.querySelector(`[data-assistant="${CSS.escape(String(route.id))}"]`);
-      const v=document.querySelector(`[data-vehicle="${CSS.escape(String(route.id))}"]`);
-      if(d)d.value=String(route.driverId);if(a)a.value=String(route.assistantId);if(v)v.value=String(route.vehicleId);
-    });
-
     const incomplete=currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId||!r.driverName||!r.assistantName);
     if(incomplete)throw new Error("La asignación quedó incompleta antes de guardar");
-
     persistCurrentPlan("Borrador",true);
-    showPlannerDiagnostic(`Distribución lista: ${routeCount} ruta(s), ${routeCount} conductor(es), ${routeCount} ayudante(s) y ${routeCount} vehículo(s) asignados.`,"ok");
+    showPlannerDiagnostic(`Distribución lista. Se respetaron los límites de longitud y dificultad, sin repetir personas.`,"ok");
     toast("Distribución generada");
     return true;
   }catch(error){
@@ -352,7 +427,7 @@ window.generateDistributionNow=optimizeDistribution;
 function addDaysISO(iso,days){const d=new Date(iso+"T12:00:00");d.setDate(d.getDate()+days);return dateISO(d)}
 function lastAssignment(id,kind,history){
   for(const plan of (history||[])){
-    const found=(plan.routes||[]).find(r=>(kind==="driver"?r.driverId:r.assistantId)===id);
+    const found=(plan.routes||[]).find(r=>String(kind==="driver"?r.driverId:r.assistantId)===String(id));
     if(found)return {...found,date:plan.date};
   }
   return null;
@@ -372,10 +447,27 @@ function recentPartners(driverId,history){
   }));
   return set;
 }
-function driverAllowed(d,r,manual){const diff=difficulty(r.amount),type=r.routeType,res=d.restriction||"none";if(res==="short"&&type!=="Corta")return false;if(res==="shortMedium"&&type==="Larga")return false;if(res==="avoidLong"&&type==="Larga")return false;if(res==="avoidHard"&&diff==="Difícil")return false;if(res==="avoidLongHard"&&(type==="Larga"||diff==="Difícil"))return false;return true}
+function recentPartnerNames(driverId,history){
+  const set=new Set();
+  (history||[]).slice(0,5).forEach(p=>(p.routes||[]).forEach(r=>{
+    if(String(r.driverId)===String(driverId)&&r.assistantName)set.add(normalizePersonName(r.assistantName));
+  }));
+  return set;
+}
+function assistantWorkloadByName(name,history){
+  const key=normalizePersonName(name);let total=0;
+  (history||[]).slice(0,20).forEach(p=>(p.routes||[]).forEach(r=>{if(normalizePersonName(r.assistantName)===key)total+=routeWeight(r)}));
+  return total;
+}
+function driverAllowed(driver,route,manual){
+  const maxRoute=driver.maxRouteType||({short:"Corta",shortMedium:"Intermedia",avoidLong:"Intermedia",avoidLongHard:"Intermedia"}[driver.restriction]||"Larga");
+  const maxDifficulty=driver.maxDifficulty||(["avoidHard","avoidLongHard"].includes(driver.restriction)?"Normal":"Difícil");
+  return routeTypeRank(route.routeType)<=routeTypeRank(maxRoute)&&difficultyRank(difficulty(route.amount))<=difficultyRank(maxDifficulty);
+}
 
 function persistCurrentPlan(status="Borrador",immediate=false){
   currentPlan.status=status;
+  currentPlan.options={teamMode:"official-first",...(currentPlan.options||{})};
   currentPlan.routes.forEach(r=>r.difficulty=difficulty(r.amount));
   const copy=JSON.parse(JSON.stringify(currentPlan));
   const idx=state.plans.findIndex(p=>p.date===currentPlan.date);

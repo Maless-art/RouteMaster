@@ -76,6 +76,18 @@
           </div>
         </div>
 
+        <div class="team-mode card">
+          <div>
+            <strong>Composición del equipo</strong>
+            <small>Define a quién debe priorizar RouteMaster como ayudante.</small>
+          </div>
+          <select id="teamMode">
+            <option value="official-first">Ayudantes oficiales primero</option>
+            <option value="drivers-first">Conductores habilitados primero</option>
+            <option value="assistants-only">Solo ayudantes (oficiales y eventuales)</option>
+          </select>
+        </div>
+
         <div id="plannerNotice" class="notice hidden"></div>
         <div id="plannedRoutes" class="planner-list"></div>
 
@@ -152,9 +164,9 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="./storage.js?v=1.0.0"></script>
-  <script src="./firebase.js?v=1.0.0"></script>
-  <script src="./app.js?v=1.0.4"></script>
+  <script src="./storage.js?v=1.0.6"></script>
+  <script src="./firebase.js?v=1.0.6"></script>
+  <script src="./app.js?v=1.0.6"></script>
   <script>
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" });
   </script>

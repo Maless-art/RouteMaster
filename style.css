@@ -80,3 +80,10 @@ button,input,select,textarea{font:inherit}.hidden{display:none!important}
 
 /* v1.0.3: leyenda compacta de dificultad */
 .page-title-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.difficulty-legend{display:flex;align-items:center;gap:12px;padding:6px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 16px rgba(18,42,34,.05)}.difficulty-legend span{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.78rem;font-weight:700;white-space:nowrap}.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block}.legend-simple{background:#3487db}.legend-normal{background:#ee8a1a}.legend-hard{background:#c14949}@media(max-width:560px){.page-title-row{align-items:flex-start;gap:8px}.difficulty-legend{gap:8px;padding:5px 8px}.difficulty-legend span{font-size:.7rem}}
+
+/* v1.0.6: restricciones dobles y composición del equipo */
+.team-mode{margin-top:14px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.team-mode strong,.team-mode small{display:block}.team-mode small{margin-top:4px;color:var(--muted)}
+.team-mode select{min-width:290px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:#fff}
+.resource-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.resource-tag{padding:4px 8px;border-radius:999px;background:var(--surface-2);font-size:.72rem;font-weight:700;color:var(--muted)}
+@media(max-width:700px){.team-mode{align-items:stretch;flex-direction:column}.team-mode select{min-width:0;width:100%}}
