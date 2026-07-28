@@ -90,7 +90,10 @@ function bindGlobalButtons(){
   });
   qs("#optimizeButton").addEventListener("click",event=>{event.preventDefault();optimizeDistribution()});
   qs("#shareTodayButton").addEventListener("click",()=>openShareDialog(getPlan(todayISO())));
-  qs("#sharePlanButton").addEventListener("click",()=>openShareDialog(currentPlan));
+  qs("#sharePlanButton").addEventListener("click",()=>{
+    syncCurrentPlanFromVisibleFields();
+    openShareDialog(currentPlan);
+  });
   qs("#saveDraftButton").addEventListener("click",()=>savePlan("Borrador"));
   qs("#confirmPlanButton").addEventListener("click",()=>savePlan("Programada"));
   qs("#saveSettingsButton").addEventListener("click",saveSettings);
@@ -112,7 +115,7 @@ function renderToday(filter=""){
   routes.forEach(r=>{
     const el=document.createElement("article");el.className="route-card";el.style.setProperty("--route-color",routeColor(r.routeType));
     el.innerHTML=`<div class="route-content"><div class="route-top"><div><h3>${escapeHtml(r.routeName)}</h3><p class="route-meta">${escapeHtml(r.routeType)}</p></div></div>
-    <div class="route-person"><div><small>Conductor</small><strong>${escapeHtml(r.driverName||"Sin asignar")}</strong></div><div><small>Ayudante</small><strong>${escapeHtml(r.assistantName||"Sin asignar")}</strong></div><div><small>Unidad</small><strong>${escapeHtml(r.unit||"—")} · ${escapeHtml(r.plate||"—")}</strong></div></div></div>`;
+    <div class="route-person"><div><small>Conductor</small><strong>${escapeHtml(r.driverName||"Sin asignar")}</strong></div><div><small>Ayudante</small><strong>${escapeHtml(r.assistantName||"Sin ayudante")}</strong></div><div><small>Unidad</small><strong>${escapeHtml(r.unit||"—")} · ${escapeHtml(r.plate||"—")}</strong></div></div></div>`;
     c.appendChild(el)
   });
 }
@@ -327,10 +330,7 @@ function optimizeDistribution(){
         : teamMode==="official-eventual"
           ? officialAssistants.length+eventualAssistants.length
           : new Set([...officialAssistants,...eventualAssistants,...dualRoleDrivers].map(p=>normalizePersonName(p.name))).size;
-    if(possibleAssistants<routeCount){
-      const message=`No hay suficientes personas habilitadas como ayudantes para ${routeCount} ruta(s).`;
-      showPlannerDiagnostic(message,"error");toast(message);return false;
-    }
+    const assistantShortage=Math.max(0,routeCount-possibleAssistants);
 
     const history=(state.plans||[])
       .filter(p=>p&&p.date&&p.date<currentPlan.date&&p.status!=="Cancelada")
@@ -396,7 +396,14 @@ function optimizeDistribution(){
           return score(a)-score(b);
         });
       const assistant=candidates[0];
-      if(!assistant)throw new Error(`No hay ayudante disponible para ${route.routeName} sin repetir personas`);
+      if(!assistant){
+        // En modos restrictivos se permite generar una distribución parcial.
+        // Franklin podrá completar manualmente la ruta sin ayudante.
+        route.assistantSource="assistant";
+        route.assistantId="";
+        route.assistantName="";
+        continue;
+      }
       usedAssistantRefs.add(`${assistant.source}:${assistant.id}`);
       usedPersonNames.add(normalizePersonName(assistant.name));
       route.assistantSource=assistant.source;route.assistantId=assistant.id;route.assistantName=assistant.name||"";
@@ -415,11 +422,18 @@ function optimizeDistribution(){
     currentPlan.routes=ordered;
     plannerDirty=true;
     renderPlanner();
-    const incomplete=currentPlan.routes.some(r=>!r.driverId||!r.assistantId||!r.vehicleId||!r.driverName||!r.assistantName);
-    if(incomplete)throw new Error("La asignación quedó incompleta antes de guardar");
+    const missingAssistants=currentPlan.routes.filter(r=>!r.assistantId||!r.assistantName);
+    const missingRequired=currentPlan.routes.filter(r=>!r.driverId||!r.vehicleId||!r.driverName);
+    if(missingRequired.length)throw new Error("La asignación quedó incompleta en conductor o vehículo");
     persistCurrentPlan("Borrador",true);
-    showPlannerDiagnostic(`Distribución lista. Se respetaron los límites de longitud y dificultad, sin repetir personas.`,"ok");
-    toast("Distribución generada");
+    if(missingAssistants.length){
+      const names=missingAssistants.map(r=>r.routeName).join(", ");
+      showPlannerDiagnostic(`Distribución parcial: ${missingAssistants.length} ruta(s) quedaron sin ayudante (${names}). Completa esos campos manualmente antes de confirmar.`,"warning");
+      toast("Distribución generada con ayudantes pendientes");
+    }else{
+      showPlannerDiagnostic(`Distribución lista. Se respetaron los límites de longitud y dificultad, sin repetir personas.`,"ok");
+      toast("Distribución generada");
+    }
     return true;
   }catch(error){
     console.error("RouteMaster optimizeDistribution:",error);
@@ -478,8 +492,56 @@ function driverAllowed(driver,route,manual){
   return routeTypeRank(route.routeType)<=routeTypeRank(maxRoute)&&difficultyRank(difficulty(route.amount))<=difficultyRank(maxDifficulty);
 }
 
+function syncCurrentPlanFromVisibleFields(){
+  if(!currentPlan?.routes?.length)return;
+  for(const route of currentPlan.routes){
+    const amountInput=document.querySelector(`[data-amount="${route.id}"]`);
+    if(amountInput){
+      route.amount=amountInput.value===""?0:Number(amountInput.value);
+      route.difficulty=difficulty(route.amount);
+    }
+
+    const driverSelect=document.querySelector(`[data-driver="${route.id}"]`);
+    if(driverSelect){
+      const driver=(state.drivers||[]).find(x=>String(x.id)===String(driverSelect.value));
+      route.driverId=driverSelect.value||"";
+      route.driverName=driver?.name||"";
+    }
+
+    const assistantSelect=document.querySelector(`[data-assistant="${route.id}"]`);
+    if(assistantSelect){
+      const [source,rawId]=String(assistantSelect.value||"").split(":");
+      const pool=source==="driver"?(state.drivers||[]):(state.assistants||[]);
+      const assistant=pool.find(x=>String(x.id)===String(rawId));
+      route.assistantSource=source||"assistant";
+      route.assistantId=rawId||"";
+      route.assistantName=assistant?.name||"";
+    }
+
+    const vehicleSelect=document.querySelector(`[data-vehicle="${route.id}"]`);
+    if(vehicleSelect){
+      const vehicle=(state.vehicles||[]).find(x=>String(x.id)===String(vehicleSelect.value));
+      route.vehicleId=vehicleSelect.value||"";
+      route.unit=vehicle?.unit||"";
+      route.plate=vehicle?.plate||"";
+    }
+  }
+}
+
 function persistCurrentPlan(status="Borrador",immediate=false){
+  // La planificación visible es la fuente de verdad. Esto captura exactamente
+  // los cambios manuales antes de guardar o sincronizar.
+  syncCurrentPlanFromVisibleFields();
+  currentPlan.routes.forEach(r=>{
+    if(!r.assistantId){
+      r.assistantId="";
+      r.assistantName="Sin ayudante";
+      r.assistantSource="";
+    }
+  });
   currentPlan.status=status;
+  currentPlan.updatedAt=Date.now();
+  if(status==="Programada")currentPlan.confirmedAt=Date.now();
   currentPlan.options={teamMode:"official-only",...(currentPlan.options||{})};
   // Migración silenciosa de valores anteriores del selector.
   const legacyTeamModes={
@@ -498,7 +560,8 @@ function persistCurrentPlan(status="Borrador",immediate=false){
   plannerDirty=!!qs("#planner")?.classList.contains("active-view");
 }
 function savePlan(status){
-  const incomplete=currentPlan.routes.filter(r=>!r.driverId||!r.assistantId||!r.vehicleId);
+  syncCurrentPlanFromVisibleFields();
+  const incomplete=currentPlan.routes.filter(r=>!r.driverId||!r.assistantId||!r.vehicleId||!r.driverName||!r.assistantName);
   if(incomplete.length){
     const names=incomplete.map(r=>r.routeName).filter(Boolean).join(", ");
     const message=`Hay ${incomplete.length} ruta(s) con asignaciones incompletas${names?`: ${names}`:""}. Pulsa Generar distribución o complétalas manualmente.`;
@@ -571,7 +634,7 @@ function buildShareText(plan,includeAmounts=false){
     if(includeAmounts)lines.push(`💰 ${money(r.amount)}`);
     if(index<plan.routes.length-1)lines.push("──────────────","");
   });
-  lines.push("","No cambiar sin notificar");return lines.join("\n")
+  lines.push("","Generado por RouteMaster");return lines.join("\n")
 }
 async function copyText(text){
   if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text);return}

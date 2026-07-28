@@ -1,0 +1,7 @@
+RouteMaster v1.0.10
+
+- Se permite confirmar una ruta sin ayudante.
+- Conductor y vehículo siguen siendo obligatorios.
+- Las vistas y el texto de WhatsApp muestran “Sin ayudante”.
+- Una ruta sin ayudante no crea una pareja ficticia en el historial.
+- Se conserva la misma clave de localStorage y la conexión Firebase.
