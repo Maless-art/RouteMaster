@@ -561,10 +561,11 @@ function persistCurrentPlan(status="Borrador",immediate=false){
 }
 function savePlan(status){
   syncCurrentPlanFromVisibleFields();
-  const incomplete=currentPlan.routes.filter(r=>!r.driverId||!r.assistantId||!r.vehicleId||!r.driverName||!r.assistantName);
+  // El ayudante es opcional. Para confirmar solo exigimos conductor y vehículo.
+  const incomplete=currentPlan.routes.filter(r=>!r.driverId||!r.vehicleId||!r.driverName);
   if(incomplete.length){
     const names=incomplete.map(r=>r.routeName).filter(Boolean).join(", ");
-    const message=`Hay ${incomplete.length} ruta(s) con asignaciones incompletas${names?`: ${names}`:""}. Pulsa Generar distribución o complétalas manualmente.`;
+    const message=`Hay ${incomplete.length} ruta(s) sin conductor o vehículo${names?`: ${names}`:""}. Complétalas antes de confirmar.`;
     showPlannerDiagnostic(message,"error");
     toast("Hay asignaciones incompletas");
     return;
@@ -572,8 +573,22 @@ function savePlan(status){
   // Confirmar nunca vuelve a ejecutar el optimizador: conserva exactamente
   // los cambios manuales realizados después de generar la distribución.
   persistCurrentPlan(status,true);
+
+  // Verificación local inmediata: la distribución confirmada debe ser exactamente
+  // la visible, incluyendo cambios manuales y rutas sin ayudante.
+  const savedPlan=state.plans.find(p=>p.date===currentPlan.date);
+  if(savedPlan){
+    currentPlan=JSON.parse(JSON.stringify(savedPlan));
+  }
+
   renderAll();
-  toast(status==="Programada"?"Planificación confirmada con tus cambios":"Borrador guardado");
+  showPlannerDiagnostic(
+    status==="Programada"
+      ? "Planificación confirmada y guardada con los cambios visibles."
+      : "Borrador guardado.",
+    "success"
+  );
+  toast(status==="Programada"?"Planificación confirmada":"Borrador guardado");
 }
 function editTodayAssignment(id){showView("planner");qs("#planDate").value=todayISO();loadPlanForDate();setTimeout(()=>document.querySelector(`[data-driver="${id}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}),100)}
 
@@ -594,8 +609,9 @@ function openModal(){qs("#modal").classList.remove("hidden")}function closeModal
 
 
 function openShareDialog(plan){
+  const isConfirmed=plan?.status==="Programada";
   if(!plan || !Array.isArray(plan.routes) || !plan.routes.length){toast("No hay rutas para compartir");return}
-  qs("#modalTitle").textContent="Compartir planificación";
+  qs("#modalTitle").textContent=isConfirmed?"Compartir planificación confirmada":"Compartir planificación (aún no confirmada)";
   qs("#modalBody").innerHTML=`<div class="modal-body-inner">
     <label class="share-options"><input id="includeAmounts" type="checkbox"> Incluir montos de las rutas</label>
     <textarea id="sharePreview" class="share-preview" readonly></textarea>

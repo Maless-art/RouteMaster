@@ -1,7 +1,50 @@
-RouteMaster v1.0.3
+RouteMaster v1.0.6 — Reglas de personal
 
-- Corrige la asignación automática de conductor, ayudante y vehículo.
-- Añade validación y asignación de respaldo para evitar campos vacíos.
-- Agrega leyenda de dificultad junto al título Planificador.
-- Renombra dificultad Intermedia a Normal.
-- Mantiene la misma clave de localStorage y la conexión con Firebase.
+CAMBIOS
+- Cada conductor tiene dos límites independientes:
+  1) Longitud máxima automática: Corta / Intermedia / Larga.
+  2) Dificultad máxima automática: Sencilla / Normal / Difícil.
+- Un conductor puede habilitarse también como ayudante sin duplicarlo en la lista.
+- Los ayudantes se clasifican como Oficiales o Eventuales.
+- En el Planificador puedes elegir la composición del equipo:
+  * Ayudantes oficiales primero.
+  * Conductores habilitados primero.
+  * Solo ayudantes (oficiales y eventuales).
+- El sistema impide que una persona aparezca dos veces el mismo día o como conductor y ayudante de sí misma.
+- El optimizador ya no asigna automáticamente un conductor a una ruta que supere su límite de distancia o dificultad.
+
+CONFIGURACIÓN RECOMENDADA
+1. Recursos > Conductores:
+   - Edita a Sixto y Alexis.
+   - Define Longitud máxima automática.
+   - Define Dificultad máxima automática = Normal, si no deben cubrir cargas difíciles.
+   - Marca “Puede trabajar como ayudante” en los conductores que puedan apoyar.
+2. Recursos > Ayudantes:
+   - Marca los dos fijos como Oficiales.
+   - Marca los otros tres como Eventuales.
+3. Planificador:
+   - Elige el modo de composición antes de pulsar “Generar distribución”.
+
+DATOS
+- Se conserva la clave localStorage: routemaster_v0_5_0.
+- Los datos existentes se migran automáticamente.
+- Firebase continúa sincronizando la misma estructura, con los nuevos campos añadidos.
+
+
+v1.0.9: Confirmar planificación conserva los cambios manuales y ya no vuelve a ejecutar el optimizador.
+
+
+CAMBIO v1.0.9
+- Selector de composición del equipo con tres modos claros:
+  1. Solo oficiales.
+  2. Oficiales + eventuales.
+  3. Equipo flexible: oficiales, luego eventuales y por último conductores habilitados.
+- En ningún modo se usa un conductor como ayudante salvo en Equipo flexible.
+- Se conservan los cambios manuales al confirmar.
+
+
+CAMBIOS v1.0.9
+- Al confirmar se guarda exactamente la distribución visible, incluidos todos los cambios manuales.
+- Compartir también toma la distribución visible.
+- En Solo oficiales, si faltan ayudantes, se genera una distribución parcial y se dejan las rutas restantes sin ayudante para asignarlas manualmente.
+- La rotación de parejas sigue priorizando no repetir la combinación del historial reciente.

@@ -1,0 +1,9 @@
+RouteMaster v1.0.11
+
+CORRECCIÓN CRÍTICA
+- Confirmar planificación ya permite rutas sin ayudante.
+- Solo conductor y vehículo son obligatorios.
+- Se guarda exactamente la distribución visible, incluyendo cambios manuales.
+- La confirmación muestra un mensaje claro de que los cambios fueron guardados.
+- Compartir avisa si la planificación todavía no ha sido confirmada.
+- No se cambia la clave de localStorage ni la configuración de Firebase.
