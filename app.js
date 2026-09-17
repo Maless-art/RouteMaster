@@ -16,7 +16,7 @@ const resourceMeta = {
 
 document.addEventListener("DOMContentLoaded",()=>{
   setTimeout(()=>{qs("#splash").classList.add("hidden");qs("#app").classList.remove("hidden")},1500);
-  qs("#planDate").value = dateISO(addDays(new Date(),1));
+  qs("#planDate").value = nextOperationalDateISO(new Date());
   setCurrentDate(); bindNavigation(); bindGlobalButtons(); bindCloudStatus(); loadPlanForDate(); renderAll(); startCloudSync();
 });
 
@@ -25,7 +25,12 @@ function uid(){return crypto.randomUUID ? crypto.randomUUID() : Date.now().toStr
 function addDays(date,n){const d=new Date(date);d.setDate(d.getDate()+n);return d}
 function dateISO(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
 function todayISO(){return dateISO(new Date())}
-function tomorrowISO(){return dateISO(addDays(new Date(),1))}
+function tomorrowISO(){return nextOperationalDateISO(new Date())}
+function isOperationalDateISO(iso){const d=new Date(iso+"T12:00:00");const day=d.getDay();return day>=1&&day<=5}
+function nextOperationalDateISO(fromDate=new Date()){const d=new Date(fromDate);do{d.setDate(d.getDate()+1)}while(d.getDay()===0||d.getDay()===6);return dateISO(d)}
+function normalizeOperationalDateISO(iso){const d=new Date(iso+"T12:00:00");while(d.getDay()===0||d.getDay()===6)d.setDate(d.getDate()+1);return dateISO(d)}
+function mondayOfOperationalWeek(iso){const d=new Date(iso+"T12:00:00");const day=d.getDay();const delta=day===0?-6:1-day;d.setDate(d.getDate()+delta);return dateISO(d)}
+function fridayOfOperationalWeek(iso){return addDaysISO(mondayOfOperationalWeek(iso),4)}
 function money(v){return new Intl.NumberFormat("es-PA",{style:"currency",currency:"PAB"}).format(Number(v||0))}
 function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
 function save(){RouteMasterStorage.save(state);window.RouteMasterCloud?.queuePush(state);renderAll()}
@@ -82,7 +87,7 @@ function bindGlobalButtons(){
   qs("#closeModalButton").addEventListener("click",closeModal);
   qs("#modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
   qs("#addRouteButton").addEventListener("click",openRoutePicker);
-  qs("#planDate").addEventListener("change",loadPlanForDate);
+  qs("#planDate").addEventListener("change",()=>{const input=qs("#planDate");const normalized=normalizeOperationalDateISO(input.value||tomorrowISO());if(normalized!==input.value){input.value=normalized;toast("Sábado y domingo no son días de ruta. Se movió la planificación al lunes.")}loadPlanForDate()});
   qs("#teamMode").addEventListener("change",e=>{
     if(!currentPlan)return;
     currentPlan.options={...(currentPlan.options||{}),teamMode:e.target.value};
@@ -174,7 +179,9 @@ function saveResource(e,type,id){e.preventDefault();const f=new FormData(e.targe
 function deleteResource(type,id){if(!confirm("¿Eliminar este registro?"))return;const col=getCollection(type),idx=col.findIndex(x=>x.id===id);if(idx>=0)col.splice(idx,1);save();toast("Registro eliminado")}
 
 function loadPlanForDate(){
-  const date=qs("#planDate").value||tomorrowISO();
+  let date=qs("#planDate").value||tomorrowISO();
+  const normalized=normalizeOperationalDateISO(date);
+  if(normalized!==date){date=normalized;qs("#planDate").value=date;}
   const existing=getPlan(date);
   currentPlan=existing?JSON.parse(JSON.stringify(existing)):{id:uid(),date,status:"Borrador",routes:[],options:{teamMode:"official-only"}};
   currentPlan.options={teamMode:"official-only",...(currentPlan.options||{})};
@@ -333,7 +340,7 @@ function optimizeDistribution(){
     const assistantShortage=Math.max(0,routeCount-possibleAssistants);
 
     const history=(state.plans||[])
-      .filter(p=>p&&p.date&&p.date<currentPlan.date&&p.status!=="Cancelada")
+      .filter(p=>p&&p.date&&p.date<currentPlan.date&&p.status==="Programada"&&isOperationalDateISO(p.date))
       .sort((a,b)=>String(b.date).localeCompare(String(a.date)));
 
     const driverLoad=Object.fromEntries(drivers.map(d=>[String(d.id),workload(d.id,"driver",history)]));
@@ -381,15 +388,32 @@ function optimizeDistribution(){
     const assistantPool=buildAssistantCandidates();
     const usedAssistantRefs=new Set();
 
+    const weekStart=mondayOfOperationalWeek(currentPlan.date);
+    const weekEnd=fridayOfOperationalWeek(currentPlan.date);
+    const currentWeekHistory=history.filter(p=>p.date>=weekStart&&p.date<=weekEnd);
+    const previousWeekEnd=addDaysISO(weekStart,-3);
+    const previousWeekStart=addDaysISO(previousWeekEnd,-4);
+    const previousWeekHistory=history.filter(p=>p.date>=previousWeekStart&&p.date<=previousWeekEnd);
+
     for(const route of ordered){
-      const priorPartners=recentPartnerNames(route.driverId,history);
+      const fixedPartner=weeklyPartnerName(route.driverId,currentWeekHistory);
+      const previousWeekPartner=weeklyPartnerName(route.driverId,previousWeekHistory);
       const candidates=assistantPool
         .filter(a=>!usedAssistantRefs.has(`${a.source}:${a.id}`))
         .filter(a=>!usedPersonNames.has(normalizePersonName(a.name)))
         .sort((a,b)=>{
           const score=x=>{
+            const name=normalizePersonName(x.name);
             let value=x.type==="official"?0:x.type==="eventual"?1000:2000;
-            if(priorPartners.has(normalizePersonName(x.name)))value+=10000;
+            // Dentro de lunes-viernes, la pareja confirmada de la semana tiene prioridad absoluta.
+            if(fixedPartner){
+              if(name===fixedPartner)value-=100000;
+              else value+=100000;
+            }else{
+              // Al comenzar una nueva semana, evitamos repetir la pareja de la semana anterior.
+              if(previousWeekPartner&&name===previousWeekPartner)value+=20000;
+              value+=pairUsageScore(route.driverId,name,history);
+            }
             value+=assistantWorkloadByName(x.name,history);
             return value;
           };
@@ -480,6 +504,23 @@ function recentPartnerNames(driverId,history){
     if(String(r.driverId)===String(driverId)&&r.assistantName)set.add(normalizePersonName(r.assistantName));
   }));
   return set;
+}
+function weeklyPartnerName(driverId,plans){
+  const ordered=[...(plans||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  for(const plan of ordered){
+    const route=(plan.routes||[]).find(r=>String(r.driverId)===String(driverId)&&r.assistantName&&normalizePersonName(r.assistantName)!=="sin ayudante");
+    if(route)return normalizePersonName(route.assistantName);
+  }
+  return "";
+}
+function pairUsageScore(driverId,assistantName,history){
+  const key=normalizePersonName(assistantName);
+  let count=0,lastIndex=999;
+  (history||[]).forEach((p,index)=>(p.routes||[]).forEach(r=>{
+    if(String(r.driverId)===String(driverId)&&normalizePersonName(r.assistantName)===key){count++;lastIndex=Math.min(lastIndex,index)}
+  }));
+  // Menos usos y más tiempo desde la última pareja = mejor puntuación.
+  return count*2500+(lastIndex===999?0:Math.max(0,1200-lastIndex*150));
 }
 function assistantWorkloadByName(name,history){
   const key=normalizePersonName(name);let total=0;

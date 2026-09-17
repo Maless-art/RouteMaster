@@ -1,0 +1,11 @@
+RouteMaster v1.0.12
+
+- Calendario operativo lunes-viernes.
+- Viernes, sábado y domingo planifican automáticamente para el lunes.
+- Si se selecciona sábado o domingo, la fecha se mueve al lunes.
+- El optimizador usa únicamente planes CONFIRMADOS como historial; los borradores/sugerencias ya no alteran la rotación.
+- Parejas conductor-ayudante estables durante la misma semana laboral (lunes-viernes).
+- Al comenzar una nueva semana se favorece una pareja diferente a la semana anterior.
+- Ausencias, rutas sin ayudante y necesidad de eventuales no destruyen la pareja base semanal.
+- Se mantiene separada la rotación de parejas del balance diario de distancia/dificultad.
+- Se conserva la clave localStorage routemaster_v0_5_0 y la configuración Firebase existente.
