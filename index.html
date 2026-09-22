@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png" />
   <link rel="apple-touch-icon" href="icono-192.png" />
-  <link rel="stylesheet" href="./style.css?v=1.0.4" />
+  <link rel="stylesheet" href="./style.css?v=1.0.13" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -21,7 +21,7 @@
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
         <img class="sidebar-logo" src="logo.svg" alt="" />
-        <div><strong>RouteMaster</strong><small>Logística de rutas . v1.0.13</small></div>
+        <div><strong>RouteMaster</strong><small>Logística de rutas . v1.0.13b</small></div>
       </div>
       <nav class="main-nav">
         <button class="nav-item active" data-view="today"><span>◉</span> Hoy</button>
@@ -137,6 +137,14 @@
           </article>
 
           <article class="card settings-card">
+            <h3>🛒 Supermercados</h3>
+            <p>Define qué conductor tiene prioridad para supermercados en cada mes.</p>
+            <label>Mes</label><input id="supermarketMonth" type="month" />
+            <label>Conductor asignado</label><select id="supermarketDriver"></select>
+            <button id="saveSupermarketButton" class="primary-button">Guardar asignación mensual</button>
+          </article>
+
+          <article class="card settings-card">
             <h3>Respaldo de datos</h3>
             <p>Exporta periódicamente una copia para evitar pérdidas del almacenamiento local.</p>
             <button id="exportButton" class="secondary-button">Exportar respaldo</button>
@@ -164,9 +172,9 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="./storage.js?v=1.0.7"></script>
-  <script src="./firebase.js?v=1.0.7"></script>
-  <script src="./app.js?v=1.0.7"></script>
+  <script src="./storage.js?v=1.0.13"></script>
+  <script src="./firebase.js?v=1.0.13"></script>
+  <script src="./app.js?v=1.0.13"></script>
   <script>
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" });
   </script>

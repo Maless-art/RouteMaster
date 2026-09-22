@@ -30,7 +30,7 @@ const FIREBASE_CONFIG = {
       vehicles:Array.isArray(data?.vehicles)?data.vehicles:[],
       routeCatalog:Array.isArray(data?.routeCatalog)?data.routeCatalog:[],
       plans:Array.isArray(data?.plans)?data.plans:[],
-      settings:{simpleMax:2000,mediumMax:3500,...(data?.settings||{})}
+      settings:{simpleMax:2000,mediumMax:3500,supermarketAssignments:{},...(data?.settings||{})}
     };
   }
   async function pushNow(data){

@@ -102,6 +102,8 @@ function bindGlobalButtons(){
   qs("#saveDraftButton").addEventListener("click",()=>savePlan("Borrador"));
   qs("#confirmPlanButton").addEventListener("click",()=>savePlan("Programada"));
   qs("#saveSettingsButton").addEventListener("click",saveSettings);
+  qs("#supermarketMonth")?.addEventListener("change",loadSupermarketMonthAssignment);
+  qs("#saveSupermarketButton")?.addEventListener("click",saveSupermarketAssignment);
   qs("#exportButton").addEventListener("click",exportBackup);
   qs("#importInput").addEventListener("change",importBackup);
   qs("#resetButton").addEventListener("click",resetApp);
@@ -150,7 +152,7 @@ function resourceDescription(type,i){
   }
   if(type==="assistants")return `${i.active!==false?"Activo":"Inactivo"} · ${i.employmentType==="eventual"?"Eventual":"Oficial"}`;
   if(type==="vehicles")return `${i.plate||"Sin placa"} · ${i.active!==false?"Disponible":"Fuera de servicio"}`;
-  return `${i.type} · ${i.km} km · ${i.hours} h`;
+  return `${i.type} · ${i.km} km · ${i.hours} h${i.supermarketCapable?" · 🛒 admite súper":""}`;
 }
 function restrictionLabel(v){return {none:"Sin restricciones",short:"Priorizar cortas",shortMedium:"Cortas e intermedias",avoidLong:"Evitar largas",avoidHard:"Evitar difíciles",avoidLongHard:"Evitar largas y difíciles"}[v]||"Sin restricciones"}
 
@@ -167,14 +169,14 @@ function openResourceForm(type,id=null){
     ${textAreaFg("Observación operativa","notes",item?.notes||"")}`;
   if(type==="assistants") html+=`${fg("Nombre","name","text",item?.name,true)}${selectFg("Estado","active",[{v:"true",t:"Activo"},{v:"false",t:"Inactivo"}],String(item?.active!==false))}${selectFg("Tipo de personal","employmentType",[{v:"official",t:"Oficial"},{v:"eventual",t:"Eventual"}],item?.employmentType||"official")}`;
   if(type==="vehicles") html+=`${fg("Unidad","unit","text",item?.unit,true)}${fg("Placa","plate","text",item?.plate,true)}${selectFg("Estado","active",[{v:"true",t:"Disponible"},{v:"false",t:"Fuera de servicio"}],String(item?.active!==false))}${textAreaFg("Observaciones","notes",item?.notes||"")}`;
-  if(type==="routes") html+=`${fg("Nombre de la ruta","name","text",item?.name,true)}${selectFg("Tipo","type",[{v:"Corta",t:"Corta"},{v:"Intermedia",t:"Intermedia"},{v:"Larga",t:"Larga"}],item?.type||"Corta")}${fg("Kilómetros","km","number",item?.km,true)}${fg("Horas estimadas","hours","number",item?.hours,true,"0.5")}${textAreaFg("Observaciones","notes",item?.notes||"")}`;
+  if(type==="routes") html+=`${fg("Nombre de la ruta","name","text",item?.name,true)}${selectFg("Tipo","type",[{v:"Corta",t:"Corta"},{v:"Intermedia",t:"Intermedia"},{v:"Larga",t:"Larga"}],item?.type||"Corta")}${selectFg("Atención de supermercado","supermarketCapable",[{v:"false",t:"Ruta normal"},{v:"true",t:"Puede incluir supermercado"}],String(item?.supermarketCapable===true))}${fg("Kilómetros","km","number",item?.km,true)}${fg("Horas estimadas","hours","number",item?.hours,true,"0.5")}${textAreaFg("Observaciones","notes",item?.notes||"")}`;
   html+=`</div><div class="form-actions"><button type="button" class="secondary-button" id="cancelFormButton">Cancelar</button><button class="primary-button">Guardar</button></div></form></div>`;
   qs("#modalBody").innerHTML=html;openModal();qs("#cancelFormButton").onclick=closeModal;qs("#resourceForm").onsubmit=e=>saveResource(e,type,id)
 }
 function fg(label,name,type,value="",required=false,step=""){return `<div class="form-group"><label>${label}</label><input name="${name}" type="${type}" value="${escapeHtml(value??"")}" ${required?"required":""} ${step?`step="${step}"`:""}></div>`}
 function selectFg(label,name,opts,value){return `<div class="form-group"><label>${label}</label><select name="${name}">${opts.map(o=>`<option value="${escapeHtml(o.v)}" ${String(o.v)===String(value)?"selected":""}>${escapeHtml(o.t)}</option>`).join("")}</select></div>`}
 function textAreaFg(label,name,value){return `<div class="form-group full"><label>${label}</label><textarea name="${name}" rows="3">${escapeHtml(value)}</textarea></div>`}
-function saveResource(e,type,id){e.preventDefault();const f=new FormData(e.target),obj=Object.fromEntries(f.entries());obj.active=obj.active!=="false";if(type==="drivers")obj.canAssist=obj.canAssist==="true";if(type==="routes"){obj.km=Number(obj.km);obj.hours=Number(obj.hours)}
+function saveResource(e,type,id){e.preventDefault();const f=new FormData(e.target),obj=Object.fromEntries(f.entries());obj.active=obj.active!=="false";if(type==="drivers")obj.canAssist=obj.canAssist==="true";if(type==="routes"){obj.km=Number(obj.km);obj.hours=Number(obj.hours);obj.supermarketCapable=obj.supermarketCapable==="true"}
   const col=getCollection(type);if(id){Object.assign(col.find(x=>x.id===id),obj)}else col.push({id:uid(),...obj});save();closeModal();toast("Registro guardado")}
 function deleteResource(type,id){if(!confirm("¿Eliminar este registro?"))return;const col=getCollection(type),idx=col.findIndex(x=>x.id===id);if(idx>=0)col.splice(idx,1);save();toast("Registro eliminado")}
 
@@ -222,6 +224,7 @@ function renderPlanner(){
         <label for="amount-${r.id}">Monto estimado</label>
         <div class="amount-input-wrap"><span>B/.</span><input id="amount-${r.id}" data-amount="${r.id}" type="number" inputmode="decimal" min="0" step="0.01" value="${r.amount||""}" placeholder="0.00"></div>
       </div>
+      ${r.supermarketCapable?`<label class="supermarket-toggle"><input type="checkbox" data-supermarket="${r.id}" ${r.isSupermarket?"checked":""}> <span>🛒 Esta salida incluye supermercado</span></label>`:""}
 
       <div class="assignment-grid">
         <div class="form-group"><label>Conductor</label><select data-driver="${r.id}">${personOptions(state.drivers,r.driverId,"Sin asignar")}</select></div>
@@ -257,6 +260,7 @@ function renderPlanner(){
       }
     };
   });
+  qsa("[data-supermarket]").forEach(c=>c.onchange=e=>{const r=currentPlan.routes.find(x=>x.id===e.target.dataset.supermarket);if(r){r.isSupermarket=e.target.checked;plannerDirty=true}});
   qsa("[data-driver]").forEach(s=>s.onchange=e=>manualAssign("driver",e.target.dataset.driver,e.target.value));
   qsa("[data-assistant]").forEach(s=>s.onchange=e=>manualAssign("assistant",e.target.dataset.assistant,e.target.value));
   qsa("[data-vehicle]").forEach(s=>s.onchange=e=>manualAssign("vehicle",e.target.dataset.vehicle,e.target.value));
@@ -304,8 +308,8 @@ function manualAssign(kind,routeId,id){
 }
 function openRoutePicker(){
   if(!state.routeCatalog.length){toast("Primero crea rutas en Recursos");showView("resources");openResource("routes");return}
-  qs("#modalTitle").textContent="Agregar rutas";qs("#modalBody").innerHTML=`<div class="modal-body-inner"><div class="checkbox-list">${state.routeCatalog.map(r=>`<div class="checkbox-item"><label><input type="checkbox" value="${r.id}" ${currentPlan.routes.some(x=>x.routeId===r.id)?"disabled":""}><span><strong>${escapeHtml(r.name)}</strong><br><small>${r.type} · ${r.km} km · ${r.hours} h</small></span></label></div>`).join("")}</div><div class="form-actions"><button id="cancelPicker" class="secondary-button">Cancelar</button><button id="addSelectedRoutes" class="primary-button">Agregar seleccionadas</button></div></div>`;
-  openModal();qs("#cancelPicker").onclick=closeModal;qs("#addSelectedRoutes").onclick=()=>{qsa('#modalBody input[type="checkbox"]:checked').forEach(c=>{const rt=state.routeCatalog.find(r=>r.id===c.value);currentPlan.routes.push({id:uid(),routeId:rt.id,routeName:rt.name,routeType:rt.type,km:rt.km,hours:rt.hours,amount:0,difficulty:"Sencilla",status:"Pendiente",driverId:"",driverName:"",assistantId:"",assistantName:"",vehicleId:"",unit:"",plate:""})});plannerDirty=true;closeModal();renderPlanner()}
+  qs("#modalTitle").textContent="Agregar rutas";qs("#modalBody").innerHTML=`<div class="modal-body-inner"><div class="checkbox-list">${state.routeCatalog.map(r=>`<div class="checkbox-item"><label><input type="checkbox" value="${r.id}" ${currentPlan.routes.some(x=>x.routeId===r.id)?"disabled":""}><span><strong>${escapeHtml(r.name)}</strong><br><small>${r.type} · ${r.km} km · ${r.hours} h${r.supermarketCapable?" · 🛒 Súper":""}</small></span></label></div>`).join("")}</div><div class="form-actions"><button id="cancelPicker" class="secondary-button">Cancelar</button><button id="addSelectedRoutes" class="primary-button">Agregar seleccionadas</button></div></div>`;
+  openModal();qs("#cancelPicker").onclick=closeModal;qs("#addSelectedRoutes").onclick=()=>{qsa('#modalBody input[type="checkbox"]:checked').forEach(c=>{const rt=state.routeCatalog.find(r=>r.id===c.value);currentPlan.routes.push({id:uid(),routeId:rt.id,routeName:rt.name,routeType:rt.type,km:rt.km,hours:rt.hours,supermarketCapable:rt.supermarketCapable===true,isSupermarket:false,amount:0,difficulty:"Sencilla",status:"Pendiente",driverId:"",driverName:"",assistantId:"",assistantName:"",vehicleId:"",unit:"",plate:""})});plannerDirty=true;closeModal();renderPlanner()}
 }
 
 function isAvailableResource(item){return item && item.active!==false && String(item.active).toLowerCase()!=="false"}
@@ -313,6 +317,12 @@ function normalizePersonName(name){return String(name||"").trim().toLowerCase().
 function routeTypeRank(type){return {Corta:1,Intermedia:2,Larga:3}[type]||3}
 function difficultyRank(level){return {Sencilla:1,Normal:2,Difícil:3}[level]||3}
 function assistantHistoryKey(route){return normalizePersonName(route.assistantName)||`${route.assistantSource||"assistant"}:${route.assistantId||""}`}
+
+function monthKey(iso){return String(iso||"").slice(0,7)}
+function supermarketDriverForDate(iso){
+  const id=state.settings?.supermarketAssignments?.[monthKey(iso)]||"";
+  return (state.drivers||[]).find(d=>String(d.id)===String(id)&&isAvailableResource(d))||null;
+}
 
 function optimizeDistribution(){
   try{
@@ -349,9 +359,22 @@ function optimizeDistribution(){
     const usedDriverIds=new Set();
     const usedPersonNames=new Set();
 
-    // Etapa 1: asignar todos los conductores. La longitud y la dificultad se validan por separado.
+    // Etapa 1: asignar conductores. Si hay salidas de supermercado, el conductor
+    // mensual recibe la de mayor monto, siempre que su perfil de seguridad lo permita.
+    ordered.forEach(route=>route.difficulty=difficulty(route.amount));
+    const supermarketDriver=supermarketDriverForDate(currentPlan.date);
+    const supermarketRoutes=ordered.filter(r=>r.isSupermarket===true).sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
+    if(supermarketDriver&&supermarketRoutes.length){
+      const priorityRoute=supermarketRoutes.find(r=>driverAllowed(supermarketDriver,r,false));
+      if(priorityRoute){
+        priorityRoute.driverId=String(supermarketDriver.id);priorityRoute.driverName=supermarketDriver.name||"";
+        usedDriverIds.add(String(supermarketDriver.id));usedPersonNames.add(normalizePersonName(supermarketDriver.name));
+      }else{
+        showPlannerDiagnostic(`El conductor de supermercado del mes no es compatible con las rutas de súper de hoy. Se aplicó el reparto normal.`,"warning");
+      }
+    }
     for(const route of ordered){
-      route.difficulty=difficulty(route.amount);
+      if(route.driverId&&usedDriverIds.has(String(route.driverId)))continue;
       const candidates=drivers
         .filter(d=>!usedDriverIds.has(String(d.id)))
         .filter(d=>!usedPersonNames.has(normalizePersonName(d.name)))
@@ -542,6 +565,9 @@ function syncCurrentPlanFromVisibleFields(){
       route.difficulty=difficulty(route.amount);
     }
 
+    const supermarketInput=document.querySelector(`[data-supermarket="${route.id}"]`);
+    if(supermarketInput)route.isSupermarket=supermarketInput.checked;
+
     const driverSelect=document.querySelector(`[data-driver="${route.id}"]`);
     if(driverSelect){
       const driver=(state.drivers||[]).find(x=>String(x.id)===String(driverSelect.value));
@@ -641,8 +667,15 @@ function renderHistory(){
 }
 function formatDate(s){return new Intl.DateTimeFormat("es-PA",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date(s+"T12:00:00"))}
 
-function renderSettings(){qs("#simpleMax").value=state.settings.simpleMax;qs("#mediumMax").value=state.settings.mediumMax}
-function saveSettings(){const a=Number(qs("#simpleMax").value),b=Number(qs("#mediumMax").value);if(a<0||b<=a){toast("Revisa los límites de dificultad");return}state.settings={simpleMax:a,mediumMax:b};save();toast("Reglas guardadas")}
+function renderSettings(){
+  qs("#simpleMax").value=state.settings.simpleMax;qs("#mediumMax").value=state.settings.mediumMax;
+  const month=qs("#supermarketMonth"),driver=qs("#supermarketDriver");
+  if(month&&!month.value)month.value=monthKey(todayISO());
+  if(driver){driver.innerHTML=`<option value="">Sin asignar</option>`+(state.drivers||[]).filter(isAvailableResource).map(d=>`<option value="${d.id}">${escapeHtml(d.name)}</option>`).join("");driver.value=state.settings?.supermarketAssignments?.[month?.value]||"";}
+}
+function loadSupermarketMonthAssignment(){const month=qs("#supermarketMonth")?.value,driver=qs("#supermarketDriver");if(driver)driver.value=state.settings?.supermarketAssignments?.[month]||""}
+function saveSettings(){const a=Number(qs("#simpleMax").value),b=Number(qs("#mediumMax").value);if(a<0||b<=a){toast("Revisa los límites de dificultad");return}state.settings={...(state.settings||{}),simpleMax:a,mediumMax:b};save();toast("Reglas guardadas")}
+function saveSupermarketAssignment(){const month=qs("#supermarketMonth").value,id=qs("#supermarketDriver").value;if(!month){toast("Selecciona el mes");return}state.settings={...(state.settings||{}),supermarketAssignments:{...(state.settings?.supermarketAssignments||{}),[month]:id}};save();toast("Conductor de supermercado guardado para el mes") }
 function exportBackup(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`RouteMaster-respaldo-${todayISO()}.json`;a.click();URL.revokeObjectURL(a.href)}
 function importBackup(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(reader.result);if(!data||!Array.isArray(data.plans))throw new Error();state=data;RouteMasterStorage.save(state);window.RouteMasterCloud?.queuePush(state,true);renderAll();toast("Respaldo importado y sincronizado")}catch{toast("El archivo no es un respaldo válido")}};reader.readAsText(file);e.target.value=""}
 function resetApp(){if(!confirm("Esto eliminará todos los datos. ¿Continuar?"))return;state=RouteMasterStorage.reset();window.RouteMasterCloud?.queuePush(state,true);currentPlan=null;qs("#planDate").value=tomorrowISO();loadPlanForDate();renderAll();toast("Aplicación reiniciada")}

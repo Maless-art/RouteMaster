@@ -3,13 +3,13 @@ const STORAGE_KEY = "routemaster_v0_5_0";
 const LEGACY_KEYS = ["routemaster_v0_1_0"];
 
 const defaultData = {
-  version: "1.0.12",
+  version: "1.0.13",
   drivers: [],
   assistants: [],
   vehicles: [],
   routeCatalog: [],
   plans: [],
-  settings: { simpleMax: 2000, mediumMax: 3500 }
+  settings: { simpleMax: 2000, mediumMax: 3500, supermarketAssignments: {} }
 };
 
 function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
